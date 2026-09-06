@@ -149,6 +149,9 @@ Reception: `onCharacteristicChanged(char, value)` stamps `System.getTimer()` and
 
 Multiple athletes: a Freelap Relay Coach BLE aggregates several chips. The same design works; the adapter would then carry a chip-id per packet and the engine keeps one `RepState` per chip. The skeleton is single-chip with the chip-id plumbed through so the extension is mechanical.
 
+## 6.1 Cracking the BLE Protocol 
+The goal is just to extract timing data without paying for the expensive Coach relays, it is significantly easier to reverse engineer the transponder's Bluetooth Low Energy (BLE) output rather than the low-frequency transmitters. [1] (https://freelap.com/documentation-and-support/get-started/understanding-the-components/), [2] (https://www.freelapskitiming.com/about)Download a BLE scanning utility like nRF Connect on your smartphone.Turn on an FxChip BLE and shake it to wake up the accelerometer.Sniff the BLE advertisements. When the chip crosses a "FINISH" zone, it pushes a data packet containing its Unique Chip ID and an array of delta-timestamps (milliseconds elapsed between the gate crossings). [1] (https://www.athleticsdirect.co.uk/general-track-field/stopwatches/freelap-fxchip-ble?srsltid=AfmBOoqxf_K37I-spnKZydMrnSY-vx-8ycG6MePF8Jcg_Ck6g_ZGkX_c), [2] (https://freelap.com/documentation-and-support/products-and-manuals/transponders-transmitters-and-accessories/), [3] (https://freelap.com/documentation-and-support/sport-specific-guides/biking/), [4] (https://freelap.com/documentation-and-support/get-started/understanding-the-components/), [5] (https://www.freelapskitiming.com/about), [6] (https://freelap.com/documentation-and-support/faq-and-troubleshooting/)
+
 ## 7. App UX
 
 Watch-app, not a data field, because a data field cannot use BLE on most devices nor own the session.
