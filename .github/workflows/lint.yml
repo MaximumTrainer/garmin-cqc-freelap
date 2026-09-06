@@ -1,0 +1,24 @@
+# The Connect IQ SDK requires a Garmin login to download, so CI cannot run
+# monkeyc yet. This job validates XML resources and the Python tooling and
+# is the hook for a monkeyc step once a self-hosted runner has the SDK.
+name: lint
+on: [push, pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate XML resources
+        run: |
+          python3 - <<'PY'
+          import glob, xml.dom.minidom, sys
+          bad = 0
+          for f in glob.glob('**/*.xml', recursive=True) + ['manifest.xml']:
+              try: xml.dom.minidom.parse(f)
+              except Exception as e: print(f, e); bad += 1
+          sys.exit(bad)
+          PY
+      - name: Byte-compile tools
+        run: python3 -m py_compile tools/*.py
+      - name: Validate issue backlog
+        run: python3 -c "import json; json.load(open('.github/issues.json'))"

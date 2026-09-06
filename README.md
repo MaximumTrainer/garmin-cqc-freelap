@@ -1,143 +1,53 @@
-using Toybox.Application;
-using Toybox.Lang;
-using Toybox.System;
+# Freelap for Garmin (Connect IQ)
 
-// Rep status values written to fl_rep_status.
-module RepStatus {
-    const OK        = 0;
-    const UNMATCHED = 1;
-    const PARTIAL   = 2;
-}
+A native Garmin watch app that connects to a Freelap FxChip BLE over Bluetooth Low Energy, receives every transmitter crossing the chip recorded, and writes split time (µs), cumulative time, distance, velocity, speed and pace into the activity as FIT developer fields — one Garmin lap per Freelap rep, plus rep and session summaries.
 
-// A completed rep (START..FINISH) with totals.
-class RepSummary {
-    var rep = 0;
-    var timeUs = 0;
-    var distM = 0.0;
-    var avgVelMps = 0.0;
-    var peakVelMps = 0.0;
-    var splits = 0;
-    var status = RepStatus.OK;
-    var events = [];  // Array<SplitEvent>
-}
+Read `docs/DESIGN.md` first. The short version: the watch cannot sense Freelap's magnetic transmitters itself; the chip does, and the watch consumes the chip's BLE output exactly as the MyFreelap phone app does.
 
-// Turns decoded crossings into SplitEvents and reps.
-// Input: FreelapProtocol.Crossing objects (chip-relative time in us + code).
-// Output: callbacks onSplit(SplitEvent) and onRepComplete(RepSummary).
-class SplitEngine {
-    var course;
-    var repNumber = 0;
-    var current = [];            // SplitEvents of the rep in progress
-    var listener;                // object with onSplit(ev) and onRepComplete(rep)
-    var sessionStartTimerMs = 0; // System.getTimer() at session start
-    var bleLatencyMs = 150;
-    var bestRepUs = 0;
-    var totalDistM = 0.0;
-    var repsDone = 0;
-    var repStartChipUs = 0l;     // chip time (Long) of the START crossing (streaming mode)
-    var lastEvent = null;        // for the UI
-    var lastRep = null;
+## Status
 
-    function initialize(c as Course, l) {
-        course = c;
-        listener = l;
-        var lat = Application.getApp().getProperty("bleLatencyMs");
-        if (lat != null) { bleLatencyMs = lat; }
-    }
+Skeleton. Everything compiles against the CIQ 3.1 API surface in intent, but **the packet format in `source/ble/FreelapProtocol.mc` is a placeholder** until you have sniffed the real chip (`docs/REVERSE-ENGINEERING.md`). The rest of the pipeline (BLE state machine, split engine, FIT fields, UI) is complete enough to test with `tools/fake_chip.py`.
 
-    function onSessionStart() as Void {
-        sessionStartTimerMs = System.getTimer();
-        repNumber = 0; current = []; bestRepUs = 0; totalDistM = 0.0; repsDone = 0;
-    }
+## Layout
 
-    // A burst of crossings for one rep, delivered together (the FxChip BLE
-    // pushes the whole rep at FINISH). Crossings must be in chip-time order.
-    // arrivalTimerMs = System.getTimer() when the packet arrived.
-    function onRepBurst(crossings as Lang.Array, arrivalTimerMs as Lang.Number) as Void {
-        if (crossings.size() == 0) { return; }
-        repNumber++;
-        current = [];
-        var t0 = crossings[0].timeUs;
-        var tLast = crossings[crossings.size() - 1].timeUs;
-        var repTimeUs = (tLast - t0).toNumber();   // Long -> Number once relative
-        // Estimated wall-clock of FINISH, in ms since session start.
-        var finishEstMs = (arrivalTimerMs - bleLatencyMs) - sessionStartTimerMs;
+```
+manifest.xml / monkey.jungle        CIQ project
+resources/settings/                 course strings, BLE latency, capture mode
+source/FreelapApp.mc                app entry, wiring
+source/ble/FreelapProtocol.mc       ← the only file that knows the packet format
+source/ble/FreelapBleDelegate.mc    scan / pair / subscribe / reconnect
+source/model/Course.mc              "S:0;L:30;F:100" course parser & matcher
+source/model/SplitEvent.mc          one crossing with derived metrics
+source/model/SplitEngine.mc         crossings → splits → reps
+source/fit/FitRecorder.mc           session + developer fields + laps
+source/ui/                          activity screen, buttons, save menu
+tools/decode_capture.py             find timestamp fields in a BLE capture
+tools/fake_chip.py                  BLE peripheral that replays a rep
+docs/DESIGN.md                      architecture, timing model, FIT layout
+docs/BACKLOG.md                     issue backlog (requirements + acceptance criteria)
+captures/                           BLE captures the protocol was derived from
+docs/REVERSE-ENGINEERING.md         sniffing plan
+```
 
-        var prev = null;
-        for (var i = 0; i < crossings.size(); i++) {
-            var cr = crossings[i];
-            var ev = new SplitEvent();
-            ev.rep = repNumber;
-            ev.txCode = cr.code;
-            ev.chipId = cr.chipId;
-            ev.txIndex = course.matchCrossing(i, cr.code);
-            ev.cumTimeUs = (cr.timeUs - t0).toNumber();
-            ev.cumDistM = ev.txIndex >= 0 ? course.distances[ev.txIndex] : (prev != null ? prev.cumDistM : 0.0);
-            ev.arrivalTimerMs = arrivalTimerMs;
-            ev.estSessionMs = finishEstMs - ((repTimeUs - ev.cumTimeUs) / 1000);
-            ev.derive(prev);
-            current.add(ev);
-            prev = ev;
-            lastEvent = ev;
-            if (listener != null) { listener.onSplit(ev); }
-        }
-        finishRep();
-    }
+## Work tracking
 
-    // Streaming variant: one crossing at a time (if the chip notifies per
-    // crossing). A START code, or a FINISH, delimits reps.
-    function onCrossing(cr, arrivalTimerMs as Lang.Number) as Void {
-        if (cr.code == TxCode.START || current.size() == 0) {
-            if (current.size() > 0) { finishRep(); }
-            repNumber++;
-            current = [];
-            repStartChipUs = cr.timeUs;
-        }
-        var prev = current.size() > 0 ? current[current.size() - 1] : null;
-        var ev = new SplitEvent();
-        ev.rep = repNumber;
-        ev.txCode = cr.code;
-        ev.chipId = cr.chipId;
-        ev.txIndex = course.matchCrossing(current.size(), cr.code);
-        ev.cumTimeUs = (cr.timeUs - repStartChipUs).toNumber();
-        ev.cumDistM = ev.txIndex >= 0 ? course.distances[ev.txIndex] : (prev != null ? prev.cumDistM : 0.0);
-        ev.arrivalTimerMs = arrivalTimerMs;
-        ev.estSessionMs = (arrivalTimerMs - bleLatencyMs) - sessionStartTimerMs;
-        ev.derive(prev);
-        current.add(ev);
-        lastEvent = ev;
-        if (listener != null) { listener.onSplit(ev); }
-        if (cr.code == TxCode.FINISH) { finishRep(); }
-    }
+The plan is broken into GitHub issues grouped by milestone (M0 Foundations → M5 Beyond v0.1), each with a requirement and acceptance criteria. `docs/BACKLOG.md` mirrors them; `.github/issues.json` is the source and `tools/issues.py create` (re)creates them on GitHub.
 
-    function finishRep() as Void {
-        if (current.size() == 0) { return; }
-        var r = new RepSummary();
-        r.rep = repNumber;
-        r.events = current;
-        r.splits = current.size();
-        var last = current[current.size() - 1];
-        r.timeUs = last.cumTimeUs;
-        r.distM = last.cumDistM;
-        r.avgVelMps = r.timeUs > 0 ? r.distM / (r.timeUs / 1000000.0) : 0.0;
-        r.peakVelMps = 0.0;
-        var unmatched = false;
-        for (var i = 0; i < current.size(); i++) {
-            if (current[i].velocityMps > r.peakVelMps) { r.peakVelMps = current[i].velocityMps; }
-            if (current[i].txIndex < 0) { unmatched = true; }
-        }
-        if (unmatched) { r.status = RepStatus.UNMATCHED; }
-        else if (last.txCode != TxCode.FINISH && course.codes[course.size() - 1] == TxCode.FINISH) { r.status = RepStatus.PARTIAL; }
-        else if (current.size() < course.size()) { r.status = RepStatus.PARTIAL; }
+## Build
 
-        repsDone++;
-        totalDistM += r.distM;
-        if (r.status == RepStatus.OK && (bestRepUs == 0 || r.timeUs < bestRepUs)) { bestRepUs = r.timeUs; }
-        current = [];
-        lastRep = r;
-        if (listener != null) { listener.onRepComplete(r); }
-    }
+1. Install the Connect IQ SDK (7.x or newer) and the VS Code Monkey C extension.
+2. Add a `resources/drawables/launcher_icon.png` (40×40 is fine) and generate a developer key.
+3. Trim `manifest.xml` products to devices you own.
+4. `monkeyc -f monkey.jungle -d fr255 -o bin/freelap.prg -y developer_key.der` (or *Run* from VS Code). CI does not run `monkeyc` because the SDK needs a Garmin login; `.github/workflows/lint.yml` validates resources and tooling only.
+5. Sideload `bin/freelap.prg` to `GARMIN/APPS/` on the watch.
 
-    // Manual lap button: close the rep with what we have.
-    function forceRepEnd() as Void { finishRep(); }
-}
+## First run
+
+1. Settings (Garmin Connect app → the watch → Connect IQ apps → Freelap): enter your course, e.g. `S:0;L:30;L:60;F:100`, enable *Capture mode*.
+2. Open the app; it scans for the chip. With the placeholder UUIDs it will only find `tools/fake_chip.py` or a chip whose name starts with `FxChip`/`Freelap`.
+3. Press START, run a rep. In capture mode the last raw packet is shown on screen and the last 60 packets are kept in app storage (written at exit).
+4. BACK while recording = manual rep end; START = pause; BACK while paused = save/discard.
+
+## Where the data ends up
+
+In the `.FIT` file, as developer fields with a `field_description` each (field ids 0–9 on `record`, 20–25 on `lap`, 40–43 on `session`). Garmin Connect charts the record fields and lists lap fields per lap. For lossless µs values use the FIT file directly (FIT SDK `FitCSVTool`, `fitparse`, `fitdecode`); Connect's UI rounds floats but shows uint32 as-is.

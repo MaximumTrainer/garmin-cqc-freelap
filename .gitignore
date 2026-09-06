@@ -1,1 +1,14 @@
-.copilot-specs-cache/
+# Connect IQ build output
+bin/
+*.prg
+*.prg.debug.xml
+*.iq
+gen/
+# developer key — never commit
+*.der
+developer_key*
+# tooling
+__pycache__/
+*.pyc
+.vscode/
+.DS_Store
