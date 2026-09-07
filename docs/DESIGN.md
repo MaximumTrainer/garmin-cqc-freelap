@@ -259,7 +259,13 @@ Watch-app, not a data field, because a data field cannot use BLE on most devices
 Screens:
 
 1. **Connect** — scan progress, list of matching devices with RSSI, tap to pair. Remembers last chip.
-2. **Course** — pick a saved course (from settings) or "Quick": START + FINISH at a distance you dial in.
+2. **Course** — reachable from the idle menu (BACK before a session starts), so a workout begins without reaching for a phone.
+
+   **Choose course** lists the slots that are actually filled in, by name with the total distance under each. Slot numbers are kept, so an empty slot 3 does not renumber slots 4 upwards — the number on screen is the number in Garmin Connect. A slot whose spec does not parse is still listed, with the reason where the distance would be: hiding it would just leave the athlete wondering where course 3 went.
+
+   **Quick course** dials a two-transmitter course, START to FINISH, from 10 to 400 m in 5 m steps. It is stored as `quickDistanceM` and overrides the configured slot until it is cleared — choosing a numbered course clears it, or it would keep overriding the choice just made. The picker stops at both ends rather than wrapping; going from 400 m to 10 m on a long press would be a nasty surprise.
+
+   Both are refused while a session is running, with *Course locked for session* on screen: changing the course now would re-derive the distances of splits already written.
 3. **Activity** — the only screen that exists while a session runs. Wireframe, and what each line is:
 
    ```

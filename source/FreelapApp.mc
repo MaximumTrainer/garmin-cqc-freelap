@@ -69,6 +69,14 @@ class FreelapApp extends Application.AppBase {
         if (ble != null) { ble.captureMode = Settings.captureMode(); }
     }
 
+    // Put a course chosen on the watch into force. One place, so the course
+    // menu and the quick picker cannot forget half of it.
+    function applyCourse(chosen as Course) as Void {
+        course = chosen;
+        if (engine != null) { engine.course = chosen; }
+        WatchUi.requestUpdate();
+    }
+
     function recording() as Lang.Boolean {
         return recorder != null && recorder.session != null;
     }
