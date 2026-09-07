@@ -32,6 +32,7 @@ tools/make_icons.py                 render the launcher icon at every size devic
 tools/tests/                        pytest suite for the above
 docs/DESIGN.md                      architecture, timing model, FIT layout
 docs/EXPORT.md                      getting the splits out, and what each column means
+docs/FREELAP-ENQUIRY.md             drafted letter asking Freelap for the spec
 docs/screenshots/                   the main view at each target resolution
 captures/                           BLE captures the protocol was derived from
 docs/REVERSE-ENGINEERING.md         sniffing plan
