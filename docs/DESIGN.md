@@ -251,15 +251,21 @@ Devices do not agree on launcher icon size and it does not follow screen size: `
 
 ### 7.1 Buttons, and what happens to the session
 
-`MainDelegate.backAction(recorder)` is the whole rule, as a plain function of the recorder's state so it can be tested without a view stack:
+Three pure functions of the recorder's state — `selectAction`, `backAction` and `tapAction` — decide what every control means, and one `perform(action)` turns an action into a side effect. That split is on purpose: the mapping can be tested without a view stack, and the button, the tap and anything added later cannot drift apart, because they all end up in the same `perform`.
 
-| state | START / SELECT | BACK |
-| --- | --- | --- |
-| no session | start recording | leave the app |
-| recording | pause | end the rep (BACK is the lap button, as on any Garmin watch) |
-| paused | resume | Save / Discard menu |
+| state | START / SELECT | BACK | tap upper half | tap lower half |
+| --- | --- | --- | --- | --- |
+| no session | start recording | leave the app | start recording | start recording |
+| recording | pause | end the rep | pause | end the rep |
+| paused | resume | Save / Discard | resume | Save / Discard |
 
-There is deliberately no way to leave the app straight from a running session: pause first. That is the Garmin convention and it means an active session is never abandoned by a single press.
+BACK is the lap button while the timer runs, as on any Garmin watch. There is deliberately no way to leave the app straight from a running session: pause first. That is the Garmin convention and it means an active session is never abandoned by a single press.
+
+The tap column exists so a touch-only device can reach all five actions without a physical button (issue #24). The screen splits in half: upper is the START button, lower is BACK. There are no permanent on-screen hints — a watch face this small cannot spare the room, and the split mirrors the physical buttons' own positions.
+
+**Ending a rep that has no crossings does nothing, and says so.** `manualLap()` returns whether it actually closed a rep; when it did not, `perform` raises the notice *No splits*. An empty lap in the FIT file would be worse than none — it appears in Connect's lap table as a rep the athlete never ran — and a button that silently does nothing gets pressed again, and again.
+
+Notices are drawn by `MainView` rather than through `WatchUi.showToast`, which needs API 4.0; `minApiLevel` here is 3.1. They clear themselves after two seconds.
 
 **`onStop` saves; it does not discard.** By the time `onStop` runs the view stack is gone, so nothing can be asked. A session still open at that point was never explicitly discarded by the athlete — the watch closed the app, or the battery did — so it is saved. Losing a training session is much the worse of the two mistakes, and a stray activity can be deleted in Garmin Connect in two taps. A session already saved through the menu has `recorder.session == null` and is left alone, so nothing is saved twice.
 

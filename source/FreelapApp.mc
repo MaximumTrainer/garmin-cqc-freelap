@@ -1,5 +1,6 @@
 using Toybox.Application;
 using Toybox.Lang;
+using Toybox.System;
 using Toybox.WatchUi;
 
 class FreelapApp extends Application.AppBase {
@@ -7,6 +8,13 @@ class FreelapApp extends Application.AppBase {
     var engine = null;
     var recorder = null;
     var course = null;
+
+    // A short message drawn over the activity screen - "No splits" when the
+    // lap button had nothing to end. WatchUi.showToast needs API 4.0 and
+    // minApiLevel here is 3.1, so MainView draws it instead.
+    var notice = "";
+    var noticeUntilMs = 0;
+    static const NOTICE_MS = 2000;
 
     function initialize() {
         AppBase.initialize();
@@ -37,6 +45,23 @@ class FreelapApp extends Application.AppBase {
         course = Course.loadActive();
         if (engine != null) { engine.course = course; }
         WatchUi.requestUpdate();
+    }
+
+    function setNotice(text as Lang.String) as Void {
+        notice = text;
+        noticeUntilMs = System.getTimer() + NOTICE_MS;
+        WatchUi.requestUpdate();
+    }
+
+    function clearNotice() as Void {
+        notice = "";
+        noticeUntilMs = 0;
+    }
+
+    // The notice to draw right now, or "" once it has timed out.
+    function activeNotice() as Lang.String {
+        if (notice.equals("") || System.getTimer() > noticeUntilMs) { return ""; }
+        return notice;
     }
 
     function getInitialView() {

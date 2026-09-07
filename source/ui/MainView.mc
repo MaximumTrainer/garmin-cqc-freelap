@@ -52,6 +52,7 @@ class MainView extends WatchUi.View {
             drawLive(dc, app, rec, h);
         }
 
+        drawNotice(dc, app, h);
         drawCaptureLine(dc, ble, h);
     }
 
@@ -120,6 +121,16 @@ class MainView extends WatchUi.View {
         if (!rec.recording) {
             stackLine(dc, WatchUi.loadResource(Rez.Strings.Paused), DETAIL, Graphics.COLOR_YELLOW);
         }
+    }
+
+    // A short-lived message from a control - currently only "No splits" when
+    // the lap button had nothing to end. Drawn here rather than through
+    // WatchUi.showToast, which needs API 4.0; minApiLevel is 3.1.
+    hidden function drawNotice(dc as Graphics.Dc, app, h as Lang.Number) as Void {
+        var notice = app.activeNotice();
+        if (notice.equals("")) { return; }
+        beginStack(h * 0.74);
+        stackLine(dc, notice, DETAIL, Graphics.COLOR_YELLOW);
     }
 
     hidden function drawCaptureLine(dc as Graphics.Dc, ble, h as Lang.Number) as Void {
