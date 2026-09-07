@@ -26,8 +26,10 @@ tools/decode_capture.py             find timestamp fields in a BLE capture
 tools/fake_chip.py                  BLE peripheral that replays a rep
 tools/validate_resources.py         what CI can check without the Garmin SDK
 tools/fit_fields.py                 read the fl_* developer fields out of a .FIT
+tools/make_icons.py                 render the launcher icon at every size devices ask for
 tools/tests/                        pytest suite for the above
 docs/DESIGN.md                      architecture, timing model, FIT layout
+docs/screenshots/                   the main view at each target resolution
 captures/                           BLE captures the protocol was derived from
 docs/REVERSE-ENGINEERING.md         sniffing plan
 ```
@@ -39,7 +41,7 @@ The plan is broken into [GitHub issues](https://github.com/MaximumTrainer/garmin
 ## Build
 
 1. Install the Connect IQ SDK (7.x or newer) and the VS Code Monkey C extension.
-2. Generate a developer key (VS Code: *Monkey C: Generate a Developer Key*). `resources/drawables/launcher_icon.png` is a placeholder disc — replace it before release.
+2. Generate a developer key (VS Code: *Monkey C: Generate a Developer Key*).
 3. Download the device definitions you need in the SDK Manager, and trim `manifest.xml` products to devices you own. `monkeyc -d <id>` refuses an id whose definition is not installed; the manifest itself only warns.
 4. `monkeyc -f monkey.jungle -d fr265 -l 1 -o bin/freelap.prg -y developer_key.der` (or *Run* from VS Code).
 5. Sideload `bin/freelap.prg` to `GARMIN/APPS/` on the watch.

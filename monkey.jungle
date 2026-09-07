@@ -4,3 +4,27 @@ project.manifest = manifest.xml
 # compiler only includes it for builds made with --unit-test.
 base.sourcePath = source;source-test
 base.resourcePath = resources
+
+# ---------------------------------------------------------------------------
+# Launcher icon overrides.
+#
+# Devices do not agree on launcher icon size, and it does not follow screen
+# size: fr265, venu2 and epix2 are all 416x416 and want 60, 70 and 60 px. A
+# single icon makes the compiler scale it and warn, which is the blurry result
+# you see in the launcher, so each size gets its own qualified resource folder.
+#
+# resources/ holds the 40 px icon, which every product not listed below wants -
+# including enduro, fr165, fr245, fr245m and fr255, whose device definitions
+# are not installed locally (see #1) but which are all 240x240-class watches.
+#
+# Regenerate the images with `python tools/make_icons.py`; the sizes are
+# checked against this file by tools/tests/test_make_icons.py.
+# ---------------------------------------------------------------------------
+vivoactive4.resourcePath = $(vivoactive4.resourcePath);resources-icon-35
+vivoactive5.resourcePath = $(vivoactive5.resourcePath);resources-icon-56
+venu.resourcePath = $(venu.resourcePath);resources-icon-60
+epix2.resourcePath = $(epix2.resourcePath);resources-icon-60
+fr265.resourcePath = $(fr265.resourcePath);resources-icon-60
+fr965.resourcePath = $(fr965.resourcePath);resources-icon-65
+venu2.resourcePath = $(venu2.resourcePath);resources-icon-70
+venu3.resourcePath = $(venu3.resourcePath);resources-icon-70

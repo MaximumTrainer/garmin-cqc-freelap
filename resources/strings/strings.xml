@@ -1,10 +1,20 @@
 <strings>
     <string id="AppName">Freelap</string>
-    <string id="Scanning">Scanning for chip…</string>
+
+    <!-- Chip status line. Kept short on purpose: it is drawn near the top of a
+         round face, where the available width is the chord, not the diameter -
+         about 60% of it on a 208px watch. MainView shrinks and then truncates
+         anything longer, so a long string here does not clip, it just gets
+         harder to read. -->
+    <string id="Scanning">Scanning…</string>
     <string id="NoChip">No chip</string>
     <string id="Connected">Chip OK</string>
+    <string id="Pairing">Pairing…</string>
+    <string id="BleError">BLE error</string>
+
     <string id="PressStart">START to begin</string>
     <string id="Rep">Rep</string>
+    <string id="Paused">PAUSED</string>
     <string id="Split">Split</string>
     <string id="Save">Save</string>
     <string id="Discard">Discard</string>
