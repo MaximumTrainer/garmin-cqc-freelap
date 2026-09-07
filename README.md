@@ -1,6 +1,10 @@
-# Freelap for Garmin (Connect IQ)
+# garmin-freelap
 
 A native Garmin watch app that connects to a Freelap FxChip BLE over Bluetooth Low Energy, receives every transmitter crossing the chip recorded, and writes split time (µs), cumulative time, distance, velocity, speed and pace into the activity as FIT developer fields — one Garmin lap per Freelap rep, plus rep and session summaries.
+
+The project is **garmin-freelap**. The *app* is called **Freelap** — that is the
+name on the watch launcher (`resources/strings/strings.xml`) and in the Connect IQ
+store listing, and it is deliberately not the repository slug.
 
 Read `docs/DESIGN.md` first. The short version: the watch cannot sense Freelap's magnetic transmitters itself; the chip does, and the watch consumes the chip's BLE output exactly as the MyFreelap phone app does.
 

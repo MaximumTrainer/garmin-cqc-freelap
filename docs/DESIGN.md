@@ -1,4 +1,4 @@
-# Freelap → Garmin: native Connect IQ app design
+# garmin-freelap — Connect IQ app design
 
 Target: Connect IQ 3.1+ devices with the BluetoothLowEnergy API (Forerunner 245/645M/945 and later, Fenix 5 Plus/6/7/8, Venu, Edge 530+, etc.). Language: Monkey C. App type: watch-app (a full activity app, so it owns the FIT session).
 
