@@ -1,6 +1,11 @@
 # Reverse-engineering the FxChip BLE protocol
 
-Goal: fill in the constants and `decode()` in `source/ble/FreelapProtocol.mc`. You need to learn:
+**Ask first.** `docs/FREELAP-ENQUIRY.md` has a drafted letter to Freelap asking
+for the specification outright (issue #8). It costs an email and nothing here is
+blocked on the answer — reverse-engineering is the fallback, not the only path —
+but it is worth having asked, in writing, whichever way they reply.
+
+Goal: fill in the constants and the decoder in `source/ble/FreelapProtocol.mc`. You need to learn:
 
 1. Advertising: device name, service UUID(s), manufacturer data (company ID + bytes). → device matching.
 2. GATT: which characteristic notifies with run data, whether a command/handshake write is needed, MTU / fragmentation.
