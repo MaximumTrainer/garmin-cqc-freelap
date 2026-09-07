@@ -16,6 +16,7 @@
     <string id="Rep">Rep</string>
     <string id="Paused">PAUSED</string>
     <string id="NoSplits">No splits</string>
+    <string id="CourseLocked">Course locked for session</string>
     <string id="Split">Split</string>
     <string id="Save">Save</string>
     <string id="Discard">Discard</string>

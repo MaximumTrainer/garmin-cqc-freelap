@@ -1,4 +1,3 @@
-using Toybox.Application.Properties;
 using Toybox.Lang;
 
 // Transmitter codes as they will be stored in the FIT file.
@@ -191,8 +190,14 @@ class Course {
     }
 
     static function loadActive() as Course {
-        var n = Properties.getValue("activeCourse");
-        if (n == null) { n = 1; }
-        return fromSpec(Properties.getValue("course" + n) as Lang.String?, "Course " + n);
+        // A quick course dialled on the watch overrides the configured slot
+        // until it is cleared (issue #22).
+        var quick = Settings.quickDistanceM();
+        if (quick > 0) {
+            return fromSpec(Settings.quickCourseSpec(quick),
+                            "Quick " + quick.format("%d") + "m");
+        }
+        var n = Settings.activeCourseIndex();
+        return fromSpec(Settings.courseSpec(n), "Course " + n.format("%d"));
     }
 }

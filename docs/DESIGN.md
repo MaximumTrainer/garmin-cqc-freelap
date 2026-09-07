@@ -289,7 +289,13 @@ Screens:
 
    With capture mode on, BACK from the idle screen opens a menu with **Dump capture** (and Exit, so BACK never traps you). Dump prints the log to the CIQ console in the tab-separated shape `tools/decode_capture.py` reads — arrival seconds, handle, hex — so a field capture pastes straight into the decoder. The handle column is a placeholder: the watch does not expose the ATT handle a notification arrived on. The console only exists in the simulator, which is why the log is also written to storage on `stop()`.
 
-Settings (Garmin Connect app → CIQ settings): courses (up to 8; each a list of `code,cumulative_m`), BLE latency estimate, clear-after-write, capture mode, sport/subsport (default Running / Track).
+Settings (Garmin Connect app → CIQ settings): eight course slots, the active slot, BLE latency estimate, clear-after-write, lap-per-crossing and capture mode.
+
+`source/model/Settings.mc` is the only place those are read. Every value goes through a **normaliser** first, because a setting can be absent (first run, or a property added in a later app version and not yet synced), the wrong type, or out of range — and none of that should reach the domain. `activeCourse` outside 1..8 is clamped rather than trusted; without that, `Course.loadActive` reads `course0`, finds nothing, and silently runs the default. A negative `bleLatencyMs` would place crossings *after* the packet arrived, so it falls back to 150 ms.
+
+The normalisers are pure functions taking the raw value, which is also the only way to test them: `Properties.setValue` will not accept `null`, so "the property is absent" is not a state a test can create by writing to storage.
+
+**A sync applies immediately.** `onSettingsChanged` re-reads everything and pushes it into the live objects — latency into the engine, the flags into the recorder, capture mode into the BLE delegate — so nothing needs the app relaunched. The course is the exception: changing it mid-session would silently re-derive the distances of splits already written, so it is refused with *Course locked for session* on screen and applied at the next session instead.
 
 ### 7.0 Drawing on a round watch
 

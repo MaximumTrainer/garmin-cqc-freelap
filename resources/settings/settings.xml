@@ -1,5 +1,5 @@
 <settings>
-    <setting propertyKey="@Properties.course1" title="Course 1 (S:0;L:30;F:100)">
+    <setting propertyKey="@Properties.course1" title="Course 1 (e.g. S:0;L:30;F:100)">
         <settingConfig type="alphaNumeric"/>
     </setting>
     <setting propertyKey="@Properties.course2" title="Course 2">
@@ -8,11 +8,31 @@
     <setting propertyKey="@Properties.course3" title="Course 3">
         <settingConfig type="alphaNumeric"/>
     </setting>
+    <setting propertyKey="@Properties.course4" title="Course 4">
+        <settingConfig type="alphaNumeric"/>
+    </setting>
+    <setting propertyKey="@Properties.course5" title="Course 5">
+        <settingConfig type="alphaNumeric"/>
+    </setting>
+    <setting propertyKey="@Properties.course6" title="Course 6">
+        <settingConfig type="alphaNumeric"/>
+    </setting>
+    <setting propertyKey="@Properties.course7" title="Course 7">
+        <settingConfig type="alphaNumeric"/>
+    </setting>
+    <setting propertyKey="@Properties.course8" title="Course 8">
+        <settingConfig type="alphaNumeric"/>
+    </setting>
     <setting propertyKey="@Properties.activeCourse" title="Active course">
         <settingConfig type="list">
             <listEntry value="1">Course 1</listEntry>
             <listEntry value="2">Course 2</listEntry>
             <listEntry value="3">Course 3</listEntry>
+            <listEntry value="4">Course 4</listEntry>
+            <listEntry value="5">Course 5</listEntry>
+            <listEntry value="6">Course 6</listEntry>
+            <listEntry value="7">Course 7</listEntry>
+            <listEntry value="8">Course 8</listEntry>
         </settingConfig>
     </setting>
     <setting propertyKey="@Properties.bleLatencyMs" title="BLE latency estimate (ms)">

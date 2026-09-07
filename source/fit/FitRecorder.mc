@@ -1,6 +1,5 @@
 using Toybox.ActivityRecording;
 using Toybox.Application;
-using Toybox.Application.Properties;
 using Toybox.FitContributor as Fit;
 using Toybox.Lang;
 using Toybox.Timer;
@@ -47,9 +46,7 @@ class FitRecorder {
 
     // The convenience entry point the app layer uses.
     static function fromSettings() as FitRecorder {
-        var c = Properties.getValue("clearAfterWrite");
-        var l = Properties.getValue("lapPerCrossing");
-        return new FitRecorder(c == null ? true : c, l == null ? false : l);
+        return new FitRecorder(Settings.clearAfterWrite(), Settings.lapPerCrossing());
     }
 
     function start(engine as SplitEngine) as Void {

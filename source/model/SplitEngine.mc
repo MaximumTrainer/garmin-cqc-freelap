@@ -1,4 +1,3 @@
-using Toybox.Application.Properties;
 using Toybox.Lang;
 using Toybox.System;
 
@@ -53,8 +52,7 @@ class SplitEngine {
 
     // The convenience entry point the app layer uses.
     static function fromSettings(c as Course, l) as SplitEngine {
-        var lat = Properties.getValue("bleLatencyMs");
-        return new SplitEngine(c, l, lat == null ? DEFAULT_LATENCY_MS : lat);
+        return new SplitEngine(c, l, Settings.bleLatencyMs());
     }
 
     function onSessionStart() as Void {
