@@ -17,7 +17,16 @@ module BleState {
 // FreelapProtocol -> hand crossings to the SplitEngine. Reconnects with
 // backoff on drop.
 class FreelapBleDelegate extends Ble.BleDelegate {
+    // BLE allows at most three registered profiles per app, and the registry
+    // outlives a single AppBase instance in the VM (the unit-test harness
+    // restarts the app between tests, which used to hit the limit and take
+    // the app down with an unhandled ProfileRegistrationException on the
+    // third start). Register once, and treat a refusal as a state the UI can
+    // show rather than a crash.
+    static var profileRegistered = false;
+
     var state = BleState.IDLE;
+    var profileError = false;
     var device = null;
     var notifyChar = null;
     var engine = null;          // SplitEngine, set by app
@@ -39,11 +48,24 @@ class FreelapBleDelegate extends Ble.BleDelegate {
         var rn = app.getProperty("lastChipName");
         if (rn != null) { rememberedName = rn; }
         Ble.setDelegate(self);
-        Ble.registerProfile(FreelapProtocol.profile());
+        registerProfileOnce();
+    }
+
+    function registerProfileOnce() as Void {
+        if (profileRegistered) { return; }
+        try {
+            Ble.registerProfile(FreelapProtocol.profile());
+            profileRegistered = true;
+        } catch (e) {
+            // Too Many Profiles, or a malformed profile dictionary. Either
+            // way there is nothing to scan for; say so instead of dying.
+            profileError = true;
+        }
     }
 
     // ---- public --------------------------------------------------------
     function startScan() as Void {
+        if (profileError) { setState(BleState.IDLE); return; }
         setState(BleState.SCANNING);
         Ble.setScanState(Ble.SCAN_STATE_SCANNING);
     }
@@ -68,7 +90,9 @@ class FreelapBleDelegate extends Ble.BleDelegate {
 
     function onScanResults(results as Ble.Iterator) as Void {
         if (state != BleState.SCANNING) { return; }
-        for (var r = results.next(); r != null; r = results.next()) {
+        // Ble.Iterator.next() is declared as Object?; the cast is what lets
+        // -l 1 see a ScanResult here.
+        for (var r = results.next() as Ble.ScanResult?; r != null; r = results.next() as Ble.ScanResult?) {
             if (FreelapProtocol.matchesScanResult(r, rememberedName)) {
                 Ble.setScanState(Ble.SCAN_STATE_OFF);
                 setState(BleState.PAIRING);

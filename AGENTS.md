@@ -91,10 +91,9 @@ source-test/fakes/FakeSession.mc   test-only doubles
 
 `source-test/` is already on the source path (`base.sourcePath = source;source-test`
 in `monkey.jungle`). Every test function **and every test-only helper** carries
-`(:test)` so release builds strip it. On the first successful SDK build, check
-that a build *without* `--unit-test` does not contain the test symbols; if your
-SDK does not strip them, gate `source-test` behind an excluded annotation and
-correct this section.
+`(:test)` so release builds strip it. Verified on SDK 9.1.0 (issue #1): the
+`--unit-test` build's `.prg.debug.xml` lists the test symbols and the plain
+build's does not. Re-check this if you change the annotation scheme.
 
 **Shape.** Tests are module-scope functions, not methods:
 
@@ -119,12 +118,12 @@ before promising a green run):
 
 ```powershell
 connectiq                                   # start the simulator once
-monkeyc -f monkey.jungle -d fr255 -l 1 --unit-test -y developer_key.der -o bin/freelap-test.prg
-monkeydo bin/freelap-test.prg fr255 -t
+monkeyc -f monkey.jungle -d fr265 -l 1 --unit-test -y developer_key.der -o bin/freelap-test.prg
+monkeydo bin/freelap-test.prg fr265 /t     # /t on Windows; -t on macOS/Linux
 ```
 
-VS Code: *Monkey C: Run Tests*. Verify the exact flags against your SDK version
-rather than trusting this block if it errors.
+VS Code: *Monkey C: Run Tests*. An unhandled exception in a test takes the
+simulator process down with it, so restart `connectiq` before the next run.
 
 **Boundaries you must cover, because the field will hit them:** empty burst, a
 single-crossing burst, more crossings than the course has transmitters, fewer

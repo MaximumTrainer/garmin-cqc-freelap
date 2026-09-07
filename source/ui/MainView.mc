@@ -23,6 +23,7 @@ class MainView extends WatchUi.View {
         var status;
         var color;
         if (ble == null) { status = "BLE?"; color = Graphics.COLOR_RED; }
+        else if (ble.profileError) { status = "BLE profile error"; color = Graphics.COLOR_RED; }
         else if (ble.state == BleState.SUBSCRIBED) { status = WatchUi.loadResource(Rez.Strings.Connected); color = Graphics.COLOR_GREEN; }
         else if (ble.state == BleState.SCANNING) { status = WatchUi.loadResource(Rez.Strings.Scanning); color = Graphics.COLOR_YELLOW; }
         else if (ble.state == BleState.IDLE) { status = WatchUi.loadResource(Rez.Strings.NoChip); color = Graphics.COLOR_RED; }

@@ -177,6 +177,21 @@ Short version: capture the phone ↔ chip traffic with Android's HCI snoop log o
 - **Garmin Connect charting rounds floats** and shows uint32 fine; if you want µs visible in Connect's UI, the uint32 fields are the ones to chart.
 - **Lap/session developer fields dropped without a yield** — handled with a deferred `addLap()`.
 
+### 9.1 SDK and API-level workarounds in the code
+
+Each of these is a compile error or a crash without the workaround, and each is
+commented at the site. `minApiLevel` stays at `3.1.0`.
+
+| Where | Why | Workaround |
+| --- | --- | --- |
+| `manifest.xml` permissions | `ActivityRecording.createSession()` is gated by the **`Fit`** permission; `Session.createField()` by **`FitContributor`**. Declaring only `FitContributor` fails the build with *Permission 'Fit' required*. | Both permissions are declared. |
+| `FreelapBleDelegate.onScanResults` | `Ble.Iterator.next()` is typed `Object?`, so `-l 1` cannot find `getDeviceName()` on it. | `results.next() as Ble.ScanResult?` in the loop. |
+| `SplitEngine.onRepBurst` | `var prev = null` gives `prev` the type `Null`, so `prev.cumDistM` does not resolve at `-l 1`. | `var prev = null as SplitEvent?`. |
+| `FreelapBleDelegate.registerProfileOnce` | BLE allows **three registered profiles per app** and the registry outlives an `AppBase` instance inside one VM. Re-registering on every app start threw an unhandled `ProfileRegistrationException` — reproduced by `monkeydo /t`, which restarts the app between tests and died on the third one. | Register once behind a `static` flag, inside `try`/`catch`; a refusal sets `profileError`, which `MainView` renders, instead of killing the app. |
+| `FitRecorder.start` | `Activity.SPORT_RUNNING` / `SUB_SPORT_TRACK` need API 3.2. | The deprecated `ActivityRecording.SPORT_*` constants are used deliberately; they still work at 3.1 and the deprecation warning is expected. Swap them when `minApiLevel` rises. |
+| `Course.splitString` | No `String.split` at API 3.1. | Hand-rolled splitter. |
+| `FreelapProtocol.feed` | `decodeNumber(UINT32)` yields a `Long`. | Chip time stays `Long` until the rep START has been subtracted, then narrows to `Number`. |
+
 ## 10. Build & run
 
-Prereqs: Connect IQ SDK 7.x+, a device with API ≥ 3.1.0 in `manifest.xml` products. `monkeyc -f monkey.jungle -d fr255 -o bin/freelap.prg -y developer_key`, then sideload or run in the simulator. The simulator can't emulate the chip; use capture mode on a real watch, or the `tools/fake_chip.py` BLE peripheral (Linux/BlueZ + bleak) that advertises the hypothesised service and replays a captured rep so you can test the pipeline end-to-end before the real decoder exists.
+Prereqs: Connect IQ SDK 7.x+, and the **device definitions downloaded through the SDK Manager** for whichever `manifest.xml` products you intend to build — `monkeyc -d <id>` refuses an id whose definition is not installed, and the manifest only warns. `monkeyc -f monkey.jungle -d fr265 -l 1 -o bin/freelap.prg -y developer_key`, then sideload or run in the simulator. On Windows the SDK's `monkeydo.bat` takes `/t`, not `-t`. The simulator can't emulate the chip; use capture mode on a real watch, or the `tools/fake_chip.py` BLE peripheral (Linux/BlueZ + bleak) that advertises the hypothesised service and replays a captured rep so you can test the pipeline end-to-end before the real decoder exists.

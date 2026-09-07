@@ -36,6 +36,10 @@
         </iq:products>
         <iq:permissions>
             <iq:uses-permission id="BluetoothLowEnergy"/>
+            <!-- Fit gates ActivityRecording.createSession(); FitContributor gates
+                 Session.createField(). Both are needed: one records the activity,
+                 the other adds our developer fields to it. -->
+            <iq:uses-permission id="Fit"/>
             <iq:uses-permission id="FitContributor"/>
             <iq:uses-permission id="Positioning"/>
             <iq:uses-permission id="Sensor"/>
