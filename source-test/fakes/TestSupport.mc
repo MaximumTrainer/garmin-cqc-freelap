@@ -10,6 +10,15 @@ using Toybox.Test;
 // case, so a helper written that way is run with a Logger as its first
 // argument and reported as an ERROR. Inside a module it is still stripped from
 // release builds by the annotation, but it is not a test.
+// A recorder, the engine feeding it, and the session double underneath.
+(:test)
+class Rig {
+    var recorder;
+    var engine;
+    var session;
+    function initialize(r, e, s) { recorder = r; engine = e; session = s; }
+}
+
 (:test)
 module TestSupport {
 
@@ -38,6 +47,28 @@ module TestSupport {
         return engine;
     }
 
+    // Element-wise array comparison. Test.assertEqual on two Arrays compares
+    // references, so it fails for equal contents and — worse — would pass for
+    // the same array compared with itself.
+    function assertArrayEquals(actual as Lang.Array, expected as Lang.Array, message as Lang.String) as Void {
+        Test.assertEqualMessage(actual.size(), expected.size(),
+            message + ": expected " + expected.size().format("%d") +
+            " values, got " + actual.size().format("%d") + " " + describe(actual));
+        for (var i = 0; i < expected.size(); i++) {
+            Test.assertEqualMessage(actual[i], expected[i],
+                message + " at index " + i.format("%d") + " (" + describe(actual) + ")");
+        }
+    }
+
+    function describe(values as Lang.Array) as Lang.String {
+        var out = "[";
+        for (var i = 0; i < values.size(); i++) {
+            if (i > 0) { out += ", "; }
+            out += values[i].toString();
+        }
+        return out + "]";
+    }
+
     // Float comparison with a stated tolerance. Monkey C Floats are single
     // precision, so an exact assertEqual on a derived metric is a coin flip.
     function assertClose(actual as Lang.Float, expected as Lang.Float,
@@ -47,6 +78,20 @@ module TestSupport {
             message + ": expected " + expected.format("%.4f") +
             " +/- " + tolerance.format("%.4f") +
             ", got " + actual.format("%.4f"));
+    }
+
+    // A recorder + engine + course wired together over a session double.
+    // Returns a Rig so a test can reach either end.
+    function recorderOn(session, spec as Lang.String) as Rig {
+        var recorder = new FitRecorder(true, false);
+        var engine = new SplitEngine(new Course(spec, "test"), recorder, 150);
+        recorder.startWith(session, engine, false);   // no Timer under test
+        return new Rig(recorder, engine, session);
+    }
+
+    // Drive the recorder's 1 Hz drain by hand, `times` records' worth.
+    function tick(recorder as FitRecorder, times as Lang.Number) as Void {
+        for (var i = 0; i < times; i++) { recorder.onTick(); }
     }
 
     // Put `spec` in the course 1 setting, push it through the app the way
