@@ -19,4 +19,6 @@
     <string id="Split">Split</string>
     <string id="Save">Save</string>
     <string id="Discard">Discard</string>
+    <string id="DumpCapture">Dump capture</string>
+    <string id="Exit">Exit</string>
 </strings>

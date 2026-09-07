@@ -130,6 +130,15 @@ module TestSupport {
         app.recorder = previous;
     }
 
+    // `bytes` bytes of plausible packet, as hex.
+    function hexPacket(bytes as Lang.Number) as Lang.String {
+        var out = "";
+        for (var i = 0; i < bytes; i++) {
+            out += (i % 256).format("%02X");
+        }
+        return out;
+    }
+
     // ---- MainView layout ---------------------------------------------------
 
     // An off-screen Dc the size of this device's display, so a view can be

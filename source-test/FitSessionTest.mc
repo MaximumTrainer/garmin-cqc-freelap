@@ -234,9 +234,9 @@ function testOnStopWithNoSessionDoesNothing(logger as Test.Logger) as Lang.Boole
 
 (:test)
 function testBackExitsWhenThereIsNoSession(logger as Test.Logger) as Lang.Boolean {
-    Test.assertEqualMessage(MainDelegate.backAction(new FitRecorder(true, false)), :exit,
+    Test.assertEqualMessage(MainDelegate.backAction(new FitRecorder(true, false), false), :exit,
         "nothing to lose, so BACK leaves the app");
-    Test.assertEqualMessage(MainDelegate.backAction(null), :exit, "and with no recorder at all");
+    Test.assertEqualMessage(MainDelegate.backAction(null, false), :exit, "and with no recorder at all");
     return true;
 }
 
@@ -244,7 +244,7 @@ function testBackExitsWhenThereIsNoSession(logger as Test.Logger) as Lang.Boolea
 function testBackIsTheLapButtonWhileRecording(logger as Test.Logger) as Lang.Boolean {
     var rig = TestSupport.recorderOn(new FakeSession(), "S:0;L:30;F:100");
 
-    Test.assertEqualMessage(MainDelegate.backAction(rig.recorder), :manualLap,
+    Test.assertEqualMessage(MainDelegate.backAction(rig.recorder, false), :manualLap,
         "BACK ends the rep while the timer runs, as on any Garmin watch");
     return true;
 }
@@ -254,7 +254,7 @@ function testBackOpensTheSaveMenuOnAPausedSession(logger as Test.Logger) as Lang
     var rig = TestSupport.recorderOn(new FakeSession(), "S:0;L:30;F:100");
     rig.recorder.stop();
 
-    Test.assertEqualMessage(MainDelegate.backAction(rig.recorder), :saveMenu,
+    Test.assertEqualMessage(MainDelegate.backAction(rig.recorder, false), :saveMenu,
         "an active session is never left without asking");
     return true;
 }

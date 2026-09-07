@@ -5,6 +5,15 @@ using Toybox.System;
 using Toybox.Timer;
 using Toybox.WatchUi;
 
+// Where the rolling capture log is stored, and the adapter that lets
+// CaptureLog write to it without knowing about Toybox.
+const CAPTURE_KEY = "capture";
+
+class StorageSink {
+    function initialize() {}
+    function setValue(key, value) as Void { Application.Storage.setValue(key, value); }
+}
+
 module BleState {
     const IDLE        = 0;
     const SCANNING    = 1;
@@ -41,7 +50,7 @@ class FreelapBleDelegate extends Ble.BleDelegate {
     var _retry = 0;
     var _retryTimer = null;
     var _handshake = [];
-    var _capture = [];          // rolling raw log for reverse-engineering
+    var capture = new CaptureLog();   // rolling raw log for reverse-engineering
 
     function initialize() {
         BleDelegate.initialize();
@@ -78,9 +87,9 @@ class FreelapBleDelegate extends Ble.BleDelegate {
     }
 
     function stop() as Void {
-        if (captureMode && _capture.size() > 0) {
-            Application.Storage.setValue("capture", _capture);
-        }
+        // The one flash write. Nothing is written while packets arrive: see
+        // CaptureLog.
+        if (captureMode) { capture.flush(new StorageSink(), CAPTURE_KEY); }
         Ble.setScanState(Ble.SCAN_STATE_OFF);
         if (device != null) { Ble.unpairDevice(device); device = null; }
         notifyChar = null;
@@ -155,10 +164,7 @@ class FreelapBleDelegate extends Ble.BleDelegate {
         packetCount++;
         if (captureMode) {
             lastPacketHex = FreelapProtocol.hex(value);
-            _capture.add([arrival, lastPacketHex]);
-            if (_capture.size() > 60) { _capture = _capture.slice(1, null); }
-            // Flash write deferred to stop(): Storage.setValue per packet is
-            // too slow for fragment bursts and values are capped (~8 KB).
+            capture.add(arrival, lastPacketHex);
             WatchUi.requestUpdate();
         }
         var crossings = FreelapProtocol.feed(value, arrival);
