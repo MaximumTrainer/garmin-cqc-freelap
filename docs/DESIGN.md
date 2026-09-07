@@ -233,6 +233,22 @@ Screens:
 
 Settings (Garmin Connect app → CIQ settings): courses (up to 8; each a list of `code,cumulative_m`), BLE latency estimate, clear-after-write, capture mode, sport/subsport (default Running / Track).
 
+### 7.0 Drawing on a round watch
+
+Two rules, because between them they are every layout bug this screen has had.
+
+**The room a centred line has is the chord at its height, not the display width.** On a 416×416 round face, a line at `y = 0.08 h` has about 250 px, not 416. Getting this wrong is what made *Scanning for chip…* clip at both edges. `MainView.usableWidth(dc, y)` computes it; on a non-round face it returns 96% of the width.
+
+**Nothing hard-codes a font for a screen size.** Each line gives a preference list, largest first, and `pickFont` takes the first that fits the room at that height — so the velocity readout is `FONT_NUMBER_MEDIUM` on a 454 px face and steps down on a 208 px one without a per-device table to maintain. Lines are then stacked by *measured* font height rather than by fractions of the display, so two lines cannot overlap however small the display is, and `fitText` truncates with an ellipsis as a last resort.
+
+This is deliberately runtime measurement rather than per-resolution resource overrides. The overrides would need a table per device family, would still be wrong for any device released after them, and cannot know how long a course error message is — the athlete types the course string.
+
+`source-test/MainViewLayoutTest.mc` asserts both rules against a real `Dc` at whatever resolution the simulator is running, so the check is repeatable rather than a screenshot someone once looked at. Screenshots of the result live in `docs/screenshots/`.
+
+### 7.05 Launcher icons
+
+Devices do not agree on launcher icon size and it does not follow screen size: `fr265`, `venu2` and `epix2` are all 416×416 and want 60, 70 and 60 px. One file makes the compiler scale it and warn. So `tools/make_icons.py` renders the mark at each size into `resources-icon-<n>/`, and `monkey.jungle` points each device at the right one; `resources/` holds the 40 px default that most products want. `tools/tests/test_make_icons.py` fails if a committed icon drifts from what the script produces, or if a product needs a size no jungle line supplies.
+
 ### 7.1 Buttons, and what happens to the session
 
 `MainDelegate.backAction(recorder)` is the whole rule, as a plain function of the recorder's state so it can be tested without a view stack:

@@ -1,6 +1,8 @@
 using Toybox.Application;
 using Toybox.Application.Properties;
+using Toybox.Graphics;
 using Toybox.Lang;
+using Toybox.System;
 using Toybox.Test;
 
 // Test-only helpers.
@@ -105,6 +107,83 @@ module TestSupport {
         Test.assertMessage(recorder.isIdle(),
             "recorder still had work after " + maxTicks.format("%d") + " ticks");
         return maxTicks;
+    }
+
+    // ---- MainView layout ---------------------------------------------------
+
+    // An off-screen Dc the size of this device's display, so a view can be
+    // drawn and measured without being on screen. BufferedBitmap moved to a
+    // factory in API 4; both spellings are handled.
+    function offscreenDc() as Graphics.Dc {
+        var settings = System.getDeviceSettings();
+        var options = { :width => settings.screenWidth, :height => settings.screenHeight };
+        if (Graphics has :createBufferedBitmap) {
+            return Graphics.createBufferedBitmap(options).get().getDc();
+        }
+        return new Graphics.BufferedBitmap(options).getDc();
+    }
+
+    // Draw MainView once and hand back what it laid out. `engine` non-null
+    // puts the view in its recording state; `paused` shows the PAUSED line.
+    function traceMainView(engine, paused as Lang.Boolean) as Lang.Array {
+        var app = Application.getApp() as FreelapApp;
+        var previousEngine = app.engine;
+        var previousRecorder = app.recorder;
+
+        if (engine != null) {
+            var session = new FakeSession();
+            var recorder = new FitRecorder(true, false);
+            recorder.startWith(session, engine, false);
+            if (paused) { recorder.stop(); }
+            app.engine = engine;
+            app.recorder = recorder;
+        }
+
+        var view = new MainView();
+        view.trace = [];
+        view.onUpdate(offscreenDc());
+
+        app.engine = previousEngine;
+        app.recorder = previousRecorder;
+        return view.trace;
+    }
+
+    // An engine that has already run the worked rep, so lastEvent and lastRep
+    // are populated and the live screen has real numbers to draw.
+    function engineWithARep() as SplitEngine {
+        var engine = engineFor("S:0;L:30;L:60;F:100");
+        engine.onRepBurst(workedRep(), 1000);
+        return engine;
+    }
+
+    // The two things a screenshot of this screen is being used to check.
+    function assertLayoutIsSane(trace as Lang.Array, what as Lang.String) as Void {
+        var screenHeight = System.getDeviceSettings().screenHeight;
+        var previousBottom = -1;
+
+        for (var i = 0; i < trace.size(); i++) {
+            var line = trace[i] as Lang.Dictionary;
+            var text = line.get(:text) as Lang.String;
+            var top = line.get(:top) as Lang.Numeric;
+            var height = line.get(:height) as Lang.Numeric;
+            var width = line.get(:width) as Lang.Numeric;
+            var usable = line.get(:usable) as Lang.Numeric;
+
+            Test.assertMessage(width <= usable + 1,
+                what + ": \"" + text + "\" is " + width.format("%d") +
+                "px wide but only " + usable.format("%d") + "px is available at y=" +
+                top.format("%d"));
+
+            Test.assertMessage(top >= previousBottom,
+                what + ": \"" + text + "\" starts at y=" + top.format("%d") +
+                " but the line above ends at y=" + previousBottom.format("%d"));
+
+            Test.assertMessage(top + height <= screenHeight,
+                what + ": \"" + text + "\" runs past the bottom of a " +
+                screenHeight.format("%d") + "px display");
+
+            previousBottom = top + height;
+        }
     }
 
     // Put `spec` in the course 1 setting, push it through the app the way
