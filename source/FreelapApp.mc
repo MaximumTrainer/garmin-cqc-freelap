@@ -21,9 +21,16 @@ class FreelapApp extends Application.AppBase {
         ble.startScan();
     }
 
+    // onStop cannot ask anything: the view stack is gone by the time it runs.
+    // An active session here was never explicitly discarded by the athlete -
+    // the watch closed the app, or the battery did - so it is saved, not
+    // thrown away. Losing a training session is much the worse of the two
+    // mistakes, and a stray activity can be deleted in Garmin Connect.
+    // A session already saved through the menu has recorder.session == null
+    // and is left alone.
     function onStop(state as Lang.Dictionary?) as Void {
         if (ble != null) { ble.stop(); }
-        if (recorder != null && recorder.session != null) { recorder.discard(); }
+        if (recorder != null && recorder.session != null) { recorder.save(); }
     }
 
     function onSettingsChanged() as Void {

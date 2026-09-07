@@ -21,16 +21,31 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
         return true;
     }
 
+    // What BACK means right now, as a plain function of the recorder's state.
+    // Extracted so the decision is testable without a view stack: the rule
+    // that an active session is never left without asking is the one thing
+    // here that costs an athlete a session if it regresses.
+    static function backAction(rec) as Lang.Symbol {
+        if (rec == null || rec.session == null) { return :exit; }
+        if (rec.recording) { return :manualLap; }
+        return :saveMenu;
+    }
+
     function onBack() as Lang.Boolean {
         var app = Application.getApp();
         var rec = app.recorder;
-        if (rec.session == null) {
-            return false;   // exit app
+        var action = backAction(rec);
+
+        if (action == :exit) {
+            return false;   // nothing to lose; leave the app
         }
-        if (rec.recording) {
+        if (action == :manualLap) {
+            // BACK is the lap button while the timer runs, as on any Garmin
+            // watch. Pause with START first to reach the save menu.
             rec.manualLap();
             return true;
         }
+
         var menu = new WatchUi.Menu2({ :title => "Freelap" });
         menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.Save), null, :save, null));
         menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.Discard), null, :discard, null));

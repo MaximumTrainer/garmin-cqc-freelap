@@ -233,6 +233,27 @@ Screens:
 
 Settings (Garmin Connect app → CIQ settings): courses (up to 8; each a list of `code,cumulative_m`), BLE latency estimate, clear-after-write, capture mode, sport/subsport (default Running / Track).
 
+### 7.1 Buttons, and what happens to the session
+
+`MainDelegate.backAction(recorder)` is the whole rule, as a plain function of the recorder's state so it can be tested without a view stack:
+
+| state | START / SELECT | BACK |
+| --- | --- | --- |
+| no session | start recording | leave the app |
+| recording | pause | end the rep (BACK is the lap button, as on any Garmin watch) |
+| paused | resume | Save / Discard menu |
+
+There is deliberately no way to leave the app straight from a running session: pause first. That is the Garmin convention and it means an active session is never abandoned by a single press.
+
+**`onStop` saves; it does not discard.** By the time `onStop` runs the view stack is gone, so nothing can be asked. A session still open at that point was never explicitly discarded by the athlete — the watch closed the app, or the battery did — so it is saved. Losing a training session is much the worse of the two mistakes, and a stray activity can be deleted in Garmin Connect in two taps. A session already saved through the menu has `recorder.session == null` and is left alone, so nothing is saved twice.
+
+### 7.2 What the simulator can and cannot show you
+
+Recorded here because it cost time. The simulator writes the activity file to `%TEMP%\com.garmin.connectiq\GARMIN\Activities` **from the moment the session starts** — it appears at 0 bytes and grows — so "no new file appeared" is not a test of discard. What distinguishes a saved session is that its `session` message carries `fl_reps`, `fl_best_rep_us`, `fl_total_dist_m` and `fl_chip_id`; only `save()` writes those.
+
+The unit-test harness cannot produce an activity file at all: it tears the app down before the file is finalised, so `session.save()` returns and nothing lands. Any FIT-level check has to go through the app's own UI.
+
+
 ## 8. Reverse-engineering plan (see `docs/REVERSE-ENGINEERING.md`)
 
 Short version: capture the phone ↔ chip traffic with Android's HCI snoop log or an nRF52840 dongle + Wireshark while doing a scripted set of runs (known distances, count splits, note times shown in MyFreelap), then diff packets against the app's displayed values to identify the timestamp unit, packet framing, transmitter code field and any handshake. The watch's capture mode doubles as a field logger once the service UUID is known. `tools/decode_capture.py` is a scaffold for the diffing.
