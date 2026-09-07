@@ -190,6 +190,21 @@ module TestSupport {
         }
     }
 
+    // ---- rep summaries ------------------------------------------------------
+
+    // A finished RepSummary of `n` crossings, without wiring up a recorder.
+    function aRepOf(n as Lang.Number) as RepSummary {
+        var spec = "S:0";
+        for (var i = 1; i < n; i++) {
+            spec += (i == n - 1 ? ";F:" : ";L:") + (i * 30).format("%d");
+        }
+        var engine = engineFor(spec);
+        engine.onRepBurst(repOf(n), 1000);
+        return engine.lastRep;
+    }
+
+    function aRep() as RepSummary { return aRepOf(4); }
+
     // ---- settings -----------------------------------------------------------
 
     // Save and restore the course slots and what selects them, so a test can

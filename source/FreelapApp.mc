@@ -1,6 +1,7 @@
 using Toybox.Application;
 using Toybox.Lang;
 using Toybox.System;
+using Toybox.Timer;
 using Toybox.WatchUi;
 
 class FreelapApp extends Application.AppBase {
@@ -24,6 +25,7 @@ class FreelapApp extends Application.AppBase {
         course = Course.loadActive();
         recorder = FitRecorder.fromSettings();
         engine = SplitEngine.fromSettings(course, recorder);
+        engine.observer = self;
         ble = new FreelapBleDelegate();
         ble.engine = engine;
         ble.startScan();
@@ -67,6 +69,41 @@ class FreelapApp extends Application.AppBase {
             recorder.lapPerCrossing = Settings.lapPerCrossing();
         }
         if (ble != null) { ble.captureMode = Settings.captureMode(); }
+    }
+
+    // ---- rep summary overlay (issue #21) ---------------------------------
+    //
+    // The engine calls this after the recorder has already queued the rep, so
+    // nothing here can delay a split reaching the FIT file. The overlay is a
+    // view and nothing else: the 1 Hz tick, the BLE callbacks and the engine
+    // all keep running underneath it.
+    var repOverlay = null;
+    var _overlayTimer = null;
+
+    function onRepComplete(r as RepSummary) as Void {
+        var now = System.getTimer();
+        if (repOverlay != null) {
+            // A second rep finished while the first was still up. Replace the
+            // contents rather than stacking a second view on top.
+            repOverlay.show(r, now);
+            WatchUi.requestUpdate();
+        } else {
+            repOverlay = new RepSummaryView(r, now);
+            WatchUi.pushView(repOverlay, new RepSummaryDelegate(), WatchUi.SLIDE_UP);
+        }
+        if (_overlayTimer == null) { _overlayTimer = new Timer.Timer(); }
+        _overlayTimer.start(method(:onOverlayTimeout), RepSummaryView.SHOW_MS, false);
+    }
+
+    function onOverlayTimeout() as Void {
+        dismissRepOverlay();
+    }
+
+    function dismissRepOverlay() as Void {
+        if (repOverlay == null) { return; }
+        if (_overlayTimer != null) { _overlayTimer.stop(); }
+        repOverlay = null;
+        WatchUi.popView(WatchUi.SLIDE_DOWN);
     }
 
     // Put a course chosen on the watch into force. One place, so the course

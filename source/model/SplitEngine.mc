@@ -31,6 +31,11 @@ class SplitEngine {
     var repNumber = 0;
     var current = [];            // SplitEvents of the rep in progress
     var listener;                // object with onSplit(ev) and onRepComplete(rep)
+    // An optional second listener for the UI. Always notified *after* the
+    // recorder: the FIT file matters more than the screen, so nothing the
+    // screen does can come between a rep finishing and its splits being
+    // queued for the file.
+    var observer = null;
     var sessionStartTimerMs = 0; // System.getTimer() at session start
     var bleLatencyMs = 150;
     var bestRepUs = 0;
@@ -184,6 +189,7 @@ class SplitEngine {
         current = [];
         lastRep = r;
         if (listener != null) { listener.onRepComplete(r); }
+        if (observer != null) { observer.onRepComplete(r); }
         return true;
     }
 
