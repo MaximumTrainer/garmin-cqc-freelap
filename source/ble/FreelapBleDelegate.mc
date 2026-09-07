@@ -11,9 +11,12 @@ using Toybox.WatchUi;
 const CAPTURE_KEY = "capture";
 const CHIP_NAME_KEY = "lastChipName";
 
+// The adapter that lets CaptureLog and SplitLog reach Application.Storage
+// without knowing about Toybox - and lets a test hand them a counter instead.
 class StorageSink {
     function initialize() {}
     function setValue(key, value) as Void { Application.Storage.setValue(key, value); }
+    function getValue(key) { return Application.Storage.getValue(key); }
 }
 
 module BleState {

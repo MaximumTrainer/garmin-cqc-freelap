@@ -161,6 +161,25 @@ module TestSupport {
         return recorderOn(new QuietSession(), spec);
     }
 
+    // A rep of `n` evenly spaced crossings: START, LAPs, FINISH.
+    function repOf(n as Lang.Number) as Lang.Array {
+        var times = [];
+        var codes = [];
+        for (var i = 0; i < n; i++) {
+            times.add((i * 4000000).toLong());
+            codes.add(i == 0 ? TxCode.START : (i == n - 1 ? TxCode.FINISH : TxCode.LAP));
+        }
+        return burst(times, codes);
+    }
+
+    // Run `count` reps of `crossings` crossings each through a rig.
+    function runRepsOf(rig as Rig, count as Lang.Number, crossings as Lang.Number) as Void {
+        for (var i = 0; i < count; i++) {
+            rig.engine.onRepBurst(repOf(crossings), 1000 + i * 30000);
+            tickUntilIdle(rig.recorder, 30);
+        }
+    }
+
     // Run `count` complete reps through a rig, draining between them the way a
     // real session does. This is the 60-rep soak issue #26 asks for, minus the
     // radio.

@@ -21,6 +21,8 @@
     <string id="Save">Save</string>
     <string id="Discard">Discard</string>
     <string id="DumpCapture">Dump capture</string>
+    <string id="DumpSplits">Dump splits</string>
+    <string id="NoSplitLog">No splits stored</string>
     <string id="Rescan">Rescan for chip</string>
     <string id="ChooseCourse">Choose course</string>
     <string id="QuickCourse">Quick course</string>
