@@ -33,6 +33,17 @@ module TestSupport {
         return out;
     }
 
+    // An engine with both clocks pinned: the session start on the watch's
+    // monotonic timer, and the assumed BLE latency. Everything about
+    // fl_est_ms is derived from those two numbers plus the packet arrival
+    // time, so with them fixed the estimates are exact.
+    function engineAt(sessionStartMs as Lang.Number, latencyMs as Lang.Number,
+                      spec as Lang.String) as SplitEngine {
+        var engine = new SplitEngine(new Course(spec, "test"), null, latencyMs);
+        engine.onSessionStartAt(sessionStartMs);
+        return engine;
+    }
+
     // The rep from the issue #14 worked example: S:0;L:30;L:60;F:100 run at
     // 4.120 / 7.480 / 11.930 s.
     function workedRep() as Lang.Array {
