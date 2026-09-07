@@ -155,7 +155,7 @@ function testClearAfterWriteBlanksTheRecordFollowingTheLastSplit(logger as Test.
     rig.recorder.clearAfterWrite = true;
 
     rig.engine.onRepBurst(TestSupport.workedRep(), 1000);
-    TestSupport.tick(rig.recorder, 5);   // 4 splits, then one empty tick
+    TestSupport.tickUntilIdle(rig.recorder, 20);
 
     Test.assertEqualMessage(session.field("fl_split_us").last(), 0,
         "the record after the last split carries no split time");
@@ -171,7 +171,7 @@ function testWithoutClearAfterWriteTheLastValuesStand(logger as Test.Logger) as 
     rig.recorder.clearAfterWrite = false;
 
     rig.engine.onRepBurst(TestSupport.workedRep(), 1000);
-    TestSupport.tick(rig.recorder, 5);
+    TestSupport.tickUntilIdle(rig.recorder, 20);
 
     // No further write means the FIT record repeats what the field held.
     Test.assertEqualMessage(session.field("fl_split_us").writes(), 4, "no blanking write");

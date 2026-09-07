@@ -24,8 +24,14 @@ class FitRecorder {
     var clearAfterWrite = true;
     var lapPerCrossing = false;
 
-    var _queue = [];         // SplitEvents waiting to be written, one per record tick
-    var _pendingLap = null;  // RepSummary whose lap fields are set, awaiting addLap()
+    // Work waiting for a tick, in arrival order: SplitEvents (one FIT record
+    // each) interleaved with the RepSummary that closes the rep they belong
+    // to. It has to be one queue rather than a split queue plus a pending-lap
+    // slot, because reps can arrive faster than records drain - a chip that
+    // buffered several reps pushes them together - and a single slot silently
+    // drops every lap but the last.
+    var _queue = [];
+    var _lapDue = false;     // lap fields are set; addLap() is owed a tick
     var _tick = null;
     var _wroteThisTick = false;
     var _log = [];           // all SplitEvent arrays for storage export
@@ -65,7 +71,7 @@ class FitRecorder {
         _engine = engine;
         session = s;
         _queue = [];
-        _pendingLap = null;
+        _lapDue = false;
         _wroteThisTick = false;
         _log = [];
         createFields();
@@ -112,34 +118,91 @@ class FitRecorder {
     }
 
     function onRepComplete(r as RepSummary) as Void {
-        // Lap fields are set now; addLap() is deferred to a later tick so the
-        // FIT writer has flushed them (see DESIGN.md §5 caveat).
+        // Queued behind the rep's own splits, so the lap cannot be cut before
+        // every one of its records is on disk.
+        _queue.add(r);
+    }
+
+    // ---- 1 Hz tick: drain one split per record --------------------------
+    // Exactly one of three things happens per tick, in this order: close a lap
+    // that is owed one, write the next record, or blank the record fields.
+    function onTick() as Void {
+        if (!recording) { return; }
+
+        if (_lapDue) {
+            // The lap's fields were set on an earlier tick. The gap is the
+            // whole point: setData() and addLap() in one pass and the lap's
+            // developer fields never reach the file (DESIGN.md §5).
+            session.addLap();
+            _lapDue = false;
+            return;
+        }
+
+        if (_queue.size() > 0) {
+            drainOne();
+            return;
+        }
+
+        if (_wroteThisTick && clearAfterWrite) {
+            clearRecord();
+            _wroteThisTick = false;
+        }
+    }
+
+    // Nothing left to write, no lap owed, nothing left to blank.
+    function isIdle() as Lang.Boolean {
+        return _queue.size() == 0 && !_lapDue && !(_wroteThisTick && clearAfterWrite);
+    }
+
+    hidden function drainOne() as Void {
+        var item = _queue[0];
+        _queue = _queue.slice(1, null);
+
+        if (item instanceof RepSummary) {
+            armLapForRep(item as RepSummary);
+            return;
+        }
+
+        var ev = item as SplitEvent;
+        writeRecord(ev);
+        _wroteThisTick = true;
+
+        if (lapPerCrossing) {
+            armLapForSplit(ev);
+            return;
+        }
+
+        // If this split is the last of its rep, set the lap fields in the same
+        // pass as the record. Only addLap() has to wait for a tick, and doing
+        // it here means a rep does not cost an extra, duplicate record.
+        if (_queue.size() > 0 && _queue[0] instanceof RepSummary) {
+            var rep = _queue[0] as RepSummary;
+            _queue = _queue.slice(1, null);
+            armLapForRep(rep);
+        }
+    }
+
+    hidden function armLapForRep(r as RepSummary) as Void {
+        if (lapPerCrossing) { return; }   // a lap was already cut per crossing
         lRepUs.setData(r.timeUs);
         lRepDist.setData(r.distM);
         lAvgVel.setData(r.avgVelMps);
         lPeakVel.setData(r.peakVelMps);
         lSplits.setData(r.splits);
         lStatus.setData(r.status);
-        _pendingLap = r;
+        _lapDue = true;
     }
 
-    // ---- 1 Hz tick: drain one split per record --------------------------
-    function onTick() as Void {
-        if (!recording) { return; }
-        if (_queue.size() > 0) {
-            var ev = _queue[0];
-            _queue = _queue.slice(1, null);
-            writeRecord(ev);
-            _wroteThisTick = true;
-            if (lapPerCrossing) { session.addLap(); }
-        } else if (_wroteThisTick && clearAfterWrite) {
-            clearRecord();
-            _wroteThisTick = false;
-        } else if (_pendingLap != null && _queue.size() == 0) {
-            // All splits of the rep are on disk; close the Garmin lap.
-            if (!lapPerCrossing) { session.addLap(); }
-            _pendingLap = null;
-        }
+    // With lapPerCrossing the lap *is* the split, so the rep-level fields
+    // carry that split's own numbers rather than the previous rep's leftovers.
+    hidden function armLapForSplit(ev as SplitEvent) as Void {
+        lRepUs.setData(ev.splitTimeUs);
+        lRepDist.setData(ev.splitDistM);
+        lAvgVel.setData(ev.velocityMps);
+        lPeakVel.setData(ev.velocityMps);
+        lSplits.setData(1);
+        lStatus.setData(ev.txIndex < 0 ? RepStatus.UNMATCHED : RepStatus.OK);
+        _lapDue = true;
     }
 
     function writeRecord(ev as SplitEvent) as Void {
@@ -183,11 +246,15 @@ class FitRecorder {
         if (session == null) { return; }
         if (_tick != null) { _tick.stop(); }
         if (!recording) { session.start(); recording = true; }   // must be running to write
+        // Drain everything still queued. There is no further tick to yield on
+        // here, so the lap fields and addLap() go in one pass - the documented
+        // risk in DESIGN.md §5, taken deliberately because the alternative is
+        // losing the rep altogether.
         while (_queue.size() > 0) {
-            writeRecord(_queue[0]);
-            _queue = _queue.slice(1, null);
+            drainOne();
+            if (_lapDue) { session.addLap(); _lapDue = false; }
         }
-        if (_pendingLap != null) { session.addLap(); _pendingLap = null; }
+        if (_lapDue) { session.addLap(); _lapDue = false; }
         if (_engine != null) {
             sReps.setData(_engine.repsDone);
             sBestUs.setData(_engine.bestRepUs);

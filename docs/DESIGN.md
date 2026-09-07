@@ -172,6 +172,32 @@ Known SDK caveat (Garmin forum bug report): lap/session developer fields are som
 
 **Export alongside the FIT.** Every split is also appended to `Application.Storage` as a compact array. On save, the app writes a summary the user can view on-watch, and the raw event list is retrievable through the CIQ simulator / a companion phone app later if you want a CSV with full µs precision independent of Garmin Connect's rendering (Connect displays developer fields but rounds in the UI; the FIT file itself keeps the uint32).
 
+### 5.1 How a lap actually gets cut
+
+Two Connect IQ constraints decide the shape of `FitRecorder.onTick()`:
+
+- **`addLap()` can only happen now.** Laps cannot be back-dated, which is why one Garmin lap per Freelap rep is the design at all.
+- **`setData()` and `addLap()` in the same pass drops the lap's developer fields.** The close is therefore deferred by a tick. That deferral is load bearing; do not "simplify" it away.
+
+Splits and rep summaries share **one queue**, in arrival order:
+
+```
+_queue = [ split, split, split, split, RepSummary,  split, split, ... ]
+                                       ^ closes the rep those four belong to
+```
+
+One queue rather than a split queue plus a pending-lap slot, because reps can arrive faster than records drain — a chip that buffered several reps pushes them together, or an athlete runs a 30 m course as a set with no rest — and a single slot silently drops every lap but the last. That was a real defect, found by issue #17's "5 reps produce 5 lap messages" criterion.
+
+Each tick does exactly one of, in this order:
+
+1. **A lap is owed** → `addLap()`. Its fields were set on an earlier tick.
+2. **The queue has work** → write the next record. If the *next* item is the `RepSummary` for the rep this split just finished, set the lap's six fields in the same pass — only `addLap()` needs the yield, and doing it here means a rep does not cost an extra, duplicate record.
+3. **Nothing queued** → blank the record fields, if `clearAfterWrite`.
+
+With `lapPerCrossing` on, every split arms a lap of its own carrying that split's numbers (`fl_rep_time_us` = the split time, `fl_rep_splits` = 1, status from whether the crossing matched), and the `RepSummary` markers are discarded so the rep does not also cut a lap.
+
+`save()` runs the same drain with no ticks left, so lap fields and `addLap()` go in one pass there — the documented risk above, taken deliberately because the alternative is losing the rep altogether.
+
 ## 6. BLE layer
 
 Constraints from the CIQ API: max 3 registered profiles, one delegate, pairing does not persist across app launches, writes limited to 20 bytes, notifications enabled by writing `0x0001` to the CCCD descriptor. Scan results expose device name, RSSI, service UUIDs, manufacturer-specific data and (4.x) raw advertising bytes.
