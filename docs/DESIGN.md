@@ -382,6 +382,21 @@ When a bound bites, the count is kept (`dropped`, `seen`) rather than the loss b
 | `venu` | 5 756 | 24 699 | 30 455 | 1 048 576 | 2.9% |
 | `fr265` / `fr965` / `fenix8solar47mm` | 6 210 | 18 741 | 24 951 | 786 432 | 3.2% |
 
+### 9.3 The stored split log
+
+The FIT file is not enough on its own: Garmin Connect rounds floats in its UI, and reaching the raw developer fields needs a desktop and the FIT SDK. So every split is also kept in `Application.Storage` under `lastSessionSplits`, at full microsecond precision, as one compact array per crossing:
+
+```
+rep, tx_index, tx_code, cum_us, split_us, cum_dist_m, split_dist_m,
+velocity_mps, est_ms, est_clamped
+```
+
+**Dump splits** in the idle menu prints it to the Connect IQ console, one JSON array per line — a row at a time rather than one assembled string, because 300 rows is a 15 KB allocation on a device where that matters. `tools/splits_to_csv.py` turns that paste into CSV with a header.
+
+Two values are deliberately blanked on the way out rather than exported as numbers, because in a spreadsheet they would be averaged: `tx_index` of −1 or 255 (the course could not place this crossing) and `est_ms` where `est_clamped` is set (the estimate landed before the session started, so the 0 is not a time).
+
+40 reps × 5 splits — the size issue #19 asks for — is 200 rows, inside the 300-row cap and written as a single value, so no chunking is needed.
+
 **A limit that bites the tests, not the app.** Monkey C caps the `globals` module at 253 members on API 3.x devices, and every `(:test)` function is a global. The unit-test build passed that at 222 tests and no longer compiles for `fr645m` or `venu`. The release build for those devices is clean — `(:test)` is stripped — so this constrains where the suite runs, not what ships. See `AGENTS.md`.
 
 **Nothing on the notification path writes to flash or builds a string** outside capture mode. A `Storage` write inside `onCharacteristicChanged` blocks long enough to lose the packets that follow, and a fragmented burst arrives milliseconds apart — so the packets it loses are the tail of the very rep being recorded. `CaptureLog` never writes; `flush()` does, from `stop()`.

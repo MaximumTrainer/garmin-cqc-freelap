@@ -160,6 +160,7 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
         if (app.ble != null && app.ble.captureMode) {
             menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.DumpCapture), null, :dump, null));
         }
+        menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.DumpSplits), null, :dumpSplits, null));
         menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.Exit), null, :exit, null));
         WatchUi.pushView(menu, new IdleMenuDelegate(), WatchUi.SLIDE_UP);
     }
@@ -169,6 +170,27 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
     // into the decoder. Simulator only in practice: there is no console on a
     // watch, which is why the log is also written to storage on stop().
     function openChooseChip() as Void { openChooseChipMenu(); }
+
+    // Prints the stored split log to the CIQ console, one JSON array per row,
+    // in the shape tools/splits_to_csv.py reads. Reads it back from storage
+    // rather than from the live recorder, so it works after an app restart -
+    // which is the case that matters, since the console is only there in the
+    // simulator and the athlete gets to it after the session.
+    function dumpSplits() as Void {
+        var app = Application.getApp();
+        var log = new SplitLog();
+        if (!log.restore(new StorageSink(), SPLIT_LOG_KEY)) {
+            app.setNotice(WatchUi.loadResource(Rez.Strings.NoSplitLog));
+            return;
+        }
+        System.println("--- freelap splits: " + log.size().format("%d") + " row(s), " +
+                       log.dropped.format("%d") + " dropped of " + log.seen.format("%d") + " seen");
+        for (var i = 0; i < log.size(); i++) {
+            System.println(log.rowAsJson(i));
+        }
+        System.println("--- end");
+        app.setNotice(log.size().format("%d") + " splits dumped");
+    }
 
     function dumpCapture() as Void {
         var app = Application.getApp();
@@ -224,6 +246,8 @@ class IdleMenuDelegate extends WatchUi.Menu2InputDelegate {
         } else if (id == :choose) {
             new MainDelegate().openChooseChip();
             return;   // the chooser replaces this menu
+        } else if (id == :dumpSplits) {
+            new MainDelegate().dumpSplits();
         } else if (id == :course) {
             new MainDelegate().perform(:courseMenu);
             return;

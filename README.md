@@ -26,6 +26,7 @@ tools/decode_capture.py             find timestamp fields in a BLE capture
 tools/fake_chip.py                  BLE peripheral: one rep, N synthetic reps, or a capture replay
 tools/validate_resources.py         what CI can check without the Garmin SDK
 tools/fit_fields.py                 read the fl_* developer fields out of a .FIT
+tools/splits_to_csv.py              a dumped on-watch split log -> CSV
 tools/make_icons.py                 render the launcher icon at every size devices ask for
 tools/tests/                        pytest suite for the above
 docs/DESIGN.md                      architecture, timing model, FIT layout

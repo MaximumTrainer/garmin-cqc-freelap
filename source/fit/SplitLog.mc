@@ -55,4 +55,36 @@ class SplitLog {
         sink.setValue(key, rows);
         return true;
     }
+
+    // Replace the log with what was stored, so a dump after an app restart
+    // shows the last session rather than an empty log.
+    function restore(source, key as Lang.String) as Lang.Boolean {
+        var stored = source.getValue(key);
+        if (stored == null || !(stored instanceof Lang.Array)) { return false; }
+        rows = stored as Lang.Array;
+        seen = rows.size();
+        dropped = 0;   // unknown after a restart; the count did not survive
+        return true;
+    }
+
+    // One row as a JSON array, for the console dump. Printed a row at a time
+    // rather than assembled into one string: 300 rows would be a 15 KB
+    // allocation on a device where that matters.
+    function rowAsJson(index as Lang.Number) as Lang.String {
+        var row = rows[index] as Lang.Array;
+        var out = "[";
+        for (var i = 0; i < row.size(); i++) {
+            if (i > 0) { out += ","; }
+            out += valueAsJson(row[i]);
+        }
+        return out + "]";
+    }
+
+    hidden function valueAsJson(value) as Lang.String {
+        if (value instanceof Lang.Boolean) { return value ? "true" : "false"; }
+        if (value instanceof Lang.Float || value instanceof Lang.Double) {
+            return value.format("%.7f");
+        }
+        return value.toString();
+    }
 }
