@@ -52,6 +52,10 @@ class FakeSession {
     // Field values captured at the moment each lap closed, so a test can ask
     // what the lap actually carried rather than what the field holds now.
     var lapSnapshots = [];
+    // How many writes each field had received when each lap closed. This is
+    // how a test asks "were all of the rep's split records on disk before the
+    // lap was cut?" without reaching into the recorder.
+    var lapWriteCounts = [];
 
     function initialize() {}
 
@@ -68,6 +72,7 @@ class FakeSession {
         calls.add("addLap");
         laps++;
         lapSnapshots.add(snapshot());
+        lapWriteCounts.add(writeCounts());
     }
 
     function save() as Void { calls.add("save"); saved = true; }
@@ -93,6 +98,22 @@ class FakeSession {
             out.put(names[i], f.last());
         }
         return out;
+    }
+
+    function writeCounts() as Lang.Dictionary {
+        var out = {};
+        var names = fields.keys();
+        for (var i = 0; i < names.size(); i++) {
+            out.put(names[i], (fields.get(names[i]) as FakeField).writes());
+        }
+        return out;
+    }
+
+    // How many writes `name` had received when lap `lapIndex` closed.
+    function lapWriteCount(lapIndex as Lang.Number, name) as Lang.Number {
+        if (lapIndex >= lapWriteCounts.size()) { return -1; }
+        var n = (lapWriteCounts[lapIndex] as Lang.Dictionary).get(name);
+        return n == null ? -1 : n;
     }
 
     // The value `name` held when lap `lapIndex` (0-based) closed.

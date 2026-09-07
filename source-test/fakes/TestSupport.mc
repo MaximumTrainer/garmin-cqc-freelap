@@ -94,6 +94,19 @@ module TestSupport {
         for (var i = 0; i < times; i++) { recorder.onTick(); }
     }
 
+    // Tick until the recorder has nothing left to do. Preferred over a magic
+    // tick count: how many ticks a rep costs is an implementation detail, and
+    // a test that hard-codes it fails for the wrong reason.
+    function tickUntilIdle(recorder as FitRecorder, maxTicks as Lang.Number) as Lang.Number {
+        for (var i = 0; i < maxTicks; i++) {
+            if (recorder.isIdle()) { return i; }
+            recorder.onTick();
+        }
+        Test.assertMessage(recorder.isIdle(),
+            "recorder still had work after " + maxTicks.format("%d") + " ticks");
+        return maxTicks;
+    }
+
     // Put `spec` in the course 1 setting, push it through the app the way
     // Garmin Connect would, and hand back the course the app ended up with.
     // The previous values are restored so tests do not leak into each other.
