@@ -63,7 +63,7 @@ class SplitEngine {
         // Estimated wall-clock of FINISH, in ms since session start.
         var finishEstMs = (arrivalTimerMs - bleLatencyMs) - sessionStartTimerMs;
 
-        var prev = null;
+        var prev = null as SplitEvent?;
         for (var i = 0; i < crossings.size(); i++) {
             var cr = crossings[i];
             var ev = new SplitEvent();

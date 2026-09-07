@@ -6,7 +6,7 @@ Read `docs/DESIGN.md` first. The short version: the watch cannot sense Freelap's
 
 ## Status
 
-Skeleton. Everything compiles against the CIQ 3.1 API surface in intent, but **the packet format in `source/ble/FreelapProtocol.mc` is a placeholder** until you have sniffed the real chip (`docs/REVERSE-ENGINEERING.md`). The rest of the pipeline (BLE state machine, split engine, FIT fields, UI) is complete enough to test with `tools/fake_chip.py`.
+Skeleton, and it builds: `monkeyc -l 1` is clean for every `manifest.xml` product whose device definition is installed (19 of 24, API 3.2 through 6.0), the app launches in the simulator, and `monkeydo /t` runs the unit tests. **The packet format in `source/ble/FreelapProtocol.mc` is still a placeholder** until you have sniffed the real chip (`docs/REVERSE-ENGINEERING.md`). The rest of the pipeline (BLE state machine, split engine, FIT fields, UI) is complete enough to test with `tools/fake_chip.py`.
 
 ## Layout
 
@@ -39,7 +39,7 @@ The plan is broken into [GitHub issues](https://github.com/MaximumTrainer/garmin
 
 1. Install the Connect IQ SDK (7.x or newer) and the VS Code Monkey C extension.
 2. Generate a developer key (VS Code: *Monkey C: Generate a Developer Key*). `resources/drawables/launcher_icon.png` is a placeholder disc — replace it before release.
-3. Trim `manifest.xml` products to devices you own.
+3. Download the device definitions you need in the SDK Manager, and trim `manifest.xml` products to devices you own. `monkeyc -d <id>` refuses an id whose definition is not installed; the manifest itself only warns.
 4. `monkeyc -f monkey.jungle -d fr265 -l 1 -o bin/freelap.prg -y developer_key.der` (or *Run* from VS Code).
 5. Sideload `bin/freelap.prg` to `GARMIN/APPS/` on the watch.
 
@@ -65,10 +65,11 @@ monkeyc -f monkey.jungle -d fr265 -l 1 --unit-test -y developer_key.der -o bin/f
 monkeydo bin/freelap-test.prg fr265 -t
 ```
 
-Or *Monkey C: Run Tests* in VS Code. `source-test/CourseTest.mc` currently has
-four passing tests and one deliberately failing one (`testCourseRejectsNonMonotonicDistances`)
-marking the next piece of work. `AGENTS.md` describes the outside-in TDD loop
-this project follows.
+On Windows the SDK's `monkeydo.bat` takes `/t`, not `-t`. Or use *Monkey C: Run
+Tests* in VS Code. `source-test/CourseTest.mc` still has one deliberately
+failing test (`testCourseRejectsNonMonotonicDistances`) marking the next piece
+of work — course validation, issue #13. `AGENTS.md` describes the outside-in
+TDD loop this project follows.
 
 ## First run
 
