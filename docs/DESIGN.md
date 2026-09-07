@@ -228,7 +228,16 @@ IDLE ─start─▶ SCANNING ─match─▶ PAIRING ─connected─▶ DISCOVERI
 
 **Backoff, and when to stop.** Five attempts at 1, 2, 4, 8 and 16 s — 31 s in all. Long enough to ride out a lap of the track with the chip out of range; short enough that a chip which is simply switched off is not hammered for the rest of the session, which costs battery in the middle of a workout. After the fifth failure `gaveUp` is set, the screen shows *No chip*, and nothing further happens until the athlete asks: BACK on the idle screen then opens a menu offering **Rescan for chip** (and Exit, so BACK never traps you). The menu only appears when there is something in it — a rescan to offer or a capture to dump — because two presses to leave an app that is doing nothing would be worse than the problem it solves.
 
-Device match (in order): a remembered device name/address from the last session; a service UUID from `FreelapProtocol.SERVICE_UUID`; a name prefix (`"FxChip"`, `"Freelap"`, `"Relay"`) as a fallback. The matcher lives in `FreelapProtocol` so it can be corrected once the real advertising is known.
+Device match (in order): a remembered device name from the last session; a service UUID from `FreelapProtocol.SERVICE_UUID`; a name prefix (`"FxChip"`, `"Freelap"`, `"Relay"`) as a fallback. The matcher lives in `FreelapProtocol` so it can be corrected once the real advertising is known.
+
+**Which chip, when several match.** Matching is not choosing. At a group session every athlete's chip is in range, and connecting to the first one to appear records *their* splits into *your* activity — a failure that looks entirely plausible until someone compares the numbers with the person who actually ran them. So a scan pass collects every match into a `ChipCandidate` list (merged by name, newest RSSI winning, because advertisements repeat several times a second) and `ChipChooser.choose` decides:
+
+1. the remembered chip, if it is in range;
+2. otherwise the strongest signal — with chips worn on waistbands, that is the one on *this* athlete.
+
+If the automatic choice is wrong, **Choose chip** in the idle menu lists every match with its name and RSSI, strongest first, and **Forget chip** clears the memory so the strongest wins again.
+
+**The identity is the advertised name.** Connect IQ does not expose a BLE device address to an app — deliberately, it is a privacy surface — so the name is the most stable identifier available, and Freelap chips advertise one containing their own id (`FxChip-1234`). It is stored in the `lastChipName` setting, which is what survives an app restart; BLE pairing itself does not. If a capture shows the chip id in manufacturer-specific data, prefer that: it survives a firmware rename, and two chips can advertise the same name.
 
 Subscribing: after `onConnectedStateChanged` reports connected, get service → get notify characteristic → get CCCD descriptor → `requestWrite([0x01,0x00]b)`. `onDescriptorWrite` with status OK moves to SUBSCRIBED. Some chips need a "start session" write to a command characteristic first; the adapter has a hook (`getHandshakeWrites()`) that returns a list of `[charUuid, bytes]` to send in sequence, empty by default.
 
