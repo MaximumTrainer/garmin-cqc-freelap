@@ -27,9 +27,11 @@ tools/fake_chip.py                  BLE peripheral: one rep, N synthetic reps, o
 tools/validate_resources.py         what CI can check without the Garmin SDK
 tools/fit_fields.py                 read the fl_* developer fields out of a .FIT
 tools/splits_to_csv.py              a dumped on-watch split log -> CSV
+tools/fit_splits.py                 a .FIT file -> CSV (splits, laps or session)
 tools/make_icons.py                 render the launcher icon at every size devices ask for
 tools/tests/                        pytest suite for the above
 docs/DESIGN.md                      architecture, timing model, FIT layout
+docs/EXPORT.md                      getting the splits out, and what each column means
 docs/screenshots/                   the main view at each target resolution
 captures/                           BLE captures the protocol was derived from
 docs/REVERSE-ENGINEERING.md         sniffing plan
@@ -88,4 +90,11 @@ TDD loop this project follows.
 
 ## Where the data ends up
 
-In the `.FIT` file, as developer fields with a `field_description` each (field ids 0–9 on `record`, 20–25 on `lap`, 40–43 on `session`). `python tools/fit_fields.py <file.fit> --values` prints the table and the values; `tools/tests/data/reference-session.fit` is a real file from the simulator that CI asserts the table against. Garmin Connect charts the record fields and lists lap fields per lap. For lossless µs values use the FIT file directly (FIT SDK `FitCSVTool`, `fitparse`, `fitdecode`); Connect's UI rounds floats but shows uint32 as-is.
+In the `.FIT` file, as developer fields with a `field_description` each (field ids 0–9 on `record`, 20–25 on `lap`, 40–43 on `session`), and independently in `Application.Storage` as the last session's split log.
+
+```bash
+python tools/fit_splits.py activity.fit > splits.csv    # from the FIT file
+python tools/splits_to_csv.py dump.txt > splits.csv     # from the watch's own log
+```
+
+**`docs/EXPORT.md`** explains both routes, what every column means, and which single number in there is an estimate rather than a measurement. `python tools/fit_fields.py <file.fit> --values` prints the raw developer field table, which is what to look at when a column comes out empty; `tools/tests/data/reference-session.fit` is a real file from the simulator that CI asserts the table against. Garmin Connect charts the record fields and lists lap fields per lap. For lossless µs values use the FIT file directly (FIT SDK `FitCSVTool`, `fitparse`, `fitdecode`); Connect's UI rounds floats but shows uint32 as-is.

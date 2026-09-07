@@ -11,8 +11,9 @@ order before touching code:
    — every unit of work already carries a **requirement** and **acceptance
    criteria**. Those criteria are your test list. Do not invent scope outside
    them. The issues are the source of truth; there is no file mirror.
-4. `docs/REVERSE-ENGINEERING.md` — only if you are touching the protocol.
-5. `CONTRIBUTING.md` — branch/PR/issue mechanics.
+4. `docs/EXPORT.md` — if you are touching the FIT fields or either exporter.
+5. `docs/REVERSE-ENGINEERING.md` — only if you are touching the protocol.
+6. `CONTRIBUTING.md` — branch/PR/issue mechanics.
 
 ## Non-negotiables
 
