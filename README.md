@@ -23,7 +23,7 @@ source/fit/FitRecorder.mc           session + developer fields + laps
 source/ui/                          activity screen, buttons, save menu
 source-test/                        Monkey C unit tests (see AGENTS.md)
 tools/decode_capture.py             find timestamp fields in a BLE capture
-tools/fake_chip.py                  BLE peripheral that replays a rep
+tools/fake_chip.py                  BLE peripheral: one rep, N synthetic reps, or a capture replay
 tools/validate_resources.py         what CI can check without the Garmin SDK
 tools/fit_fields.py                 read the fl_* developer fields out of a .FIT
 tools/make_icons.py                 render the launcher icon at every size devices ask for
