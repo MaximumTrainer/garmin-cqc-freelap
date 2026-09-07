@@ -69,7 +69,7 @@ def test_an_absolute_path_in_the_site_is_reported(tmp_path):
     page.write_text(page.read_text(encoding="utf-8").replace(
         'href="style.css"', 'href="/style.css"'), encoding="utf-8")
 
-    # The site is served from /garmin-cqc-freelap/, not the domain root, so a
+    # The site is served from /garmin-freelap/, not the domain root, so a
     # leading slash points at somebody else's page.
     assert any("outside the published site" in e for e in check_tree(root)), check_tree(root)
 

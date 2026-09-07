@@ -74,7 +74,7 @@ The app requests **nothing else**. In particular it does not request Positioning
 
 ## Support
 
-<https://github.com/MaximumTrainer/garmin-cqc-freelap/issues>
+<https://github.com/MaximumTrainer/garmin-freelap/issues>
 
 ## Trademark and affiliation
 
