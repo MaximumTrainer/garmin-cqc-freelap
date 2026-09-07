@@ -12,3 +12,4 @@ __pycache__/
 *.pyc
 .vscode/
 .DS_Store
+.copilot-specs-cache/
