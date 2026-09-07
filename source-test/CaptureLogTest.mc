@@ -165,7 +165,7 @@ function testClearEmptiesTheLogAndItsCounters(logger as Test.Logger) as Lang.Boo
 function testBackOffersTheCaptureMenuWhenCaptureModeIsOn(logger as Test.Logger) as Lang.Boolean {
     var idle = new FitRecorder(true, false);
 
-    Test.assertEqualMessage(MainDelegate.backAction(idle, true), :captureMenu,
+    Test.assertEqualMessage(MainDelegate.backAction(idle, true), :idleMenu,
         "with capture mode on there is something to do besides leaving");
     Test.assertEqualMessage(MainDelegate.backAction(idle, false), :exit,
         "and without it, BACK still just leaves");

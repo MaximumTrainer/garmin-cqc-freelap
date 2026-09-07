@@ -91,40 +91,33 @@ module FreelapProtocol {
     //   then n x 5 bytes: u32 LE timestamp (ticks) , u8 code (1=S,2=L,3=F)
     // Longer than 20 bytes -> arrives as several notifications; reassemble
     // by expected length.
-    var _buf = []b;
-    var _expected = 0;
+    // How long the message starting with these bytes will be, or 0 if this is
+    // not the start of one. Reassembly itself lives in PacketAssembler, which
+    // the BLE delegate owns - module state here made test order matter and
+    // made "throw the buffer away on a disconnect" impossible to assert.
+    function expectedLength(value as Lang.ByteArray) as Lang.Number {
+        if (value.size() < 4 || value[0] != 0xA5) { return 0; }
+        return 4 + value[1] * 5;
+    }
 
-    // Feed one notification. Returns an Array<Crossing> when a complete
-    // message has been decoded, else null.
-    function feed(value as Lang.ByteArray, arrivalTimerMs as Lang.Number) as Lang.Array? {
-        if (_expected == 0) {
-            if (value.size() < 4 || value[0] != 0xA5) { return null; }
-            _expected = 4 + value[1] * 5;
-            _buf = []b;
-        }
-        _buf = _buf.addAll(value);
-        if (_buf.size() < _expected) { return null; }
-
-        var n = _buf[1];
-        var chipId = (_buf[2] | (_buf[3] << 8)).format("%04X");
+    // Decode one *complete* message. Pure: same bytes in, same crossings out.
+    function decodeMessage(message as Lang.ByteArray, arrivalTimerMs as Lang.Number) as Lang.Array {
+        var n = message[1];
+        var chipId = (message[2] | (message[3] << 8)).format("%04X");
         var out = [];
         var off = 4;
         for (var i = 0; i < n; i++) {
             // UINT32 decodes to a Long. Keep chip time as a Long in us so an
             // absolute chip-uptime timestamp cannot overflow a 32-bit Number;
             // the SplitEngine subtracts the rep START before narrowing.
-            var ticks = _buf.decodeNumber(Lang.NUMBER_FORMAT_UINT32, { :offset => off, :endianness => Lang.ENDIAN_LITTLE });
-            var code = _buf[off + 4];
+            var ticks = message.decodeNumber(Lang.NUMBER_FORMAT_UINT32, { :offset => off, :endianness => Lang.ENDIAN_LITTLE });
+            var code = message[off + 4];
             if (code > 3) { code = 0; }
             out.add(new Crossing(ticks * TICK_US, code, chipId));
             off += 5;
         }
-        _buf = []b;
-        _expected = 0;
         return out;
     }
-
-    function reset() as Void { _buf = []b; _expected = 0; }
 
     // Hex dump for capture mode.
     function hex(value as Lang.ByteArray) as Lang.String {
