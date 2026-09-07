@@ -31,6 +31,7 @@ EXPECTED = [
     (7, "fl_tx_code", "uint8", None, "record"),
     (8, "fl_rep", "uint16", None, "record"),
     (9, "fl_est_ms", "uint32", "ms", "record"),
+    (10, "fl_chip_idx", "uint8", None, "record"),
     (20, "fl_rep_time_us", "uint32", "us", "lap"),
     (21, "fl_rep_dist_m", "float32", "m", "lap"),
     (22, "fl_rep_avg_vel", "float32", "m/s", "lap"),
@@ -55,14 +56,14 @@ def test_the_fixture_exists():
     assert FIXTURE.exists(), "regenerate with the recipe in data/README.md"
 
 
-def test_all_twenty_developer_fields_are_declared(declared):
+def test_every_developer_field_is_declared(declared):
     assert sorted(declared) == sorted(name for _, name, _, _, _ in EXPECTED)
 
 
-def test_all_ten_record_fields_are_declared(declared):
+def test_all_eleven_record_fields_are_declared(declared):
     on_record = {name for name, f in declared.items() if f["mesg"] == "record"}
     assert on_record == {name for _, name, _, _, _ in RECORD_FIELDS}
-    assert len(on_record) == 10
+    assert len(on_record) == 11
 
 
 @pytest.mark.parametrize("number,name,base_type,units,mesg", EXPECTED,

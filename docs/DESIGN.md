@@ -160,6 +160,7 @@ Field numbers are the app's own namespace (0–255). Keep the total small: older
 | 7 | `fl_tx_code` | uint8 | – | 1 START, 2 LAP, 3 FINISH, 0 unknown |
 | 8 | `fl_rep` | uint16 | – | rep number (1-based) |
 | 9 | `fl_est_ms` | uint32 | ms | estimated crossing time, ms since session start (see §3) |
+| 10 | `fl_chip_idx` | uint8 | – | which chip, as a slot into the session's `fl_chip_id` list; 255 = none |
 
 Because a rep's splits arrive together, the recorder queues them and drains one split per record tick, so N splits occupy N consecutive records (N seconds). Order is preserved and `fl_est_ms` carries the true estimated time, so the one-per-second placement is cosmetic only.
 
@@ -250,7 +251,19 @@ The buffer is an object rather than module state on `FreelapProtocol` for two re
 
 The assembler also refuses a claimed length over 256 bytes. `0xA5` appears inside payloads, so a false sync byte would otherwise leave it waiting for bytes that never arrive.
 
-Multiple athletes: a Freelap Relay Coach BLE aggregates several chips. The same design works; the adapter would then carry a chip-id per packet and the engine keeps one `RepState` per chip. The skeleton is single-chip with the chip-id plumbed through so the extension is mechanical.
+### 6.1 Several chips at once
+
+A Freelap Relay Coach BLE aggregates several chips into one peripheral. The failure to avoid is subtle and would be very hard to spot afterwards: two athletes running alternately, numbered 1, 2, 3, 4 *between them*, with every rep attributed to whoever happened to cross next. All the numbers look plausible; they are simply the wrong athlete's.
+
+**Rep state is per chip.** `ChipRoster` assigns each chip id a slot in the order it is first heard and holds that chip's rep number and rep-in-progress. Slots are never reused, so a chip that sits out four of someone else's reps comes back to its own count. Streaming crossings from two chips arriving interleaved go into two separate reps, not one rep of five crossings.
+
+**Every record carries `fl_chip_idx`** (field 10, uint8) — the slot, not the id. The id itself would be a 16-byte string on every 1 Hz record: about 115 KB of FIT file over two hours, to repeat the same handful of values. The session's `fl_chip_id` is the comma-separated list in slot order, so a slot resolves back to a chip. A single-athlete session writes exactly what it wrote before: one id, no separator. `255` is the slot on a record with no split on it, because `0` is a real chip.
+
+The roster caps at 16 chips (`ChipRoster.MAX_CHIPS`) and counts the overflow — far past anything a Relay Coach handles, but a garbled chip id must not be able to grow it without bound, and `fl_chip_idx` is a uint8 with 255 reserved.
+
+**BLE profile budget.** Connect IQ allows three registered profiles and one delegate, so "connect to several chips at once" is bounded at three even in principle. A Relay Coach is the way this is meant to work: one peripheral, one profile, chip ids in the payload. Connecting to several chips directly stays a fallback, and would need `FreelapBleDelegate` to hold several `Ble.Device` handles against one profile — which is allowed, since the profile limit is per *profile*, not per device.
+
+**Untested against hardware, and largely untestable until #4/#5.** The Relay Coach's packet format is not known: whether the chip id is where `FreelapProtocol` currently reads it, whether it is per message or per crossing, and whether the aggregated stream looks anything like a single chip's. What is built here is the plumbing and the per-chip bookkeeping, driven by synthetic bursts; the decoder half is a `HYPOTHESIS` like the rest of `FreelapProtocol`.
 
 ## 7. App UX
 

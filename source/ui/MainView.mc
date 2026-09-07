@@ -117,6 +117,12 @@ class MainView extends WatchUi.View {
         }
 
         var repLine = WatchUi.loadResource(Rez.Strings.Rep) + " " + app.engine.repsDone;
+        // With more than one chip in the session, whose rep this was matters
+        // more than the count does.
+        if (app.engine.roster.size() > 1 && lastRep != null) {
+            repLine = lastRep.chipId + "  " + WatchUi.loadResource(Rez.Strings.Rep) + " " +
+                      lastRep.rep.format("%d");
+        }
         var repColor = Graphics.COLOR_WHITE;
         if (lastRep != null) {
             repLine += "  " + (lastRep.timeUs / 1000000.0).format("%.2f") + "s";

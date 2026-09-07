@@ -11,7 +11,7 @@ than claimed once in a PR.
 It contains no athlete data: the user profile in it is the SDK simulator's
 default (68 kg, 1.78 m), the activity has no GPS positions, and there was no
 chip connected, so the record-level split values are unset. What it proves is
-that the FIT writer accepts our 20 field declarations and emits them, and that
+that the FIT writer accepts our 21 field declarations and emits them, and that
 the session message carries the four session-level values through `save()`.
 
 ### Regenerating it
