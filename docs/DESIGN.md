@@ -358,7 +358,33 @@ Short version: capture the phone ↔ chip traffic with Android's HCI snoop log o
 - **The chip may refuse a second central.** If MyFreelap must stay connected, the watch can't also connect (BLE peripherals usually allow one central). Test with the phone app closed.
 - **Chip may only push data on FINISH.** Designed for; streaming is a bonus.
 - **Absolute-time accuracy is ~100–300 ms** because of BLE latency; durations are exact. Documented in the field names (`_est_`).
-- **Developer-field limits and memory on older 3.1 devices.** 22 fields is deliberate; drop `fl_speed`/`fl_pace` (derivable) first if a device balks.
+- **Developer-field limits and memory on older 3.1 devices.** 20 fields is deliberate; drop `fl_speed`/`fl_pace` (derivable) first if a device balks.
+
+### 9.2 Memory, and what is bounded
+
+A session that works for an hour and then dies is the worst failure this app has, because it takes the whole workout with it. Everything that grows with the length of a session has a ceiling:
+
+| | limit | why |
+| --- | --- | --- |
+| `SplitLog.MAX_ROWS` | 300 rows | 60 reps of 5 crossings, more than a two-hour session. At ten values a row that is inside the ~8 KB `Application.Storage` allowance — past it the write does not warn, it simply fails, and the export is not there. |
+| `FitRecorder.MAX_QUEUE` | 400 items | A backstop. The queue drains one record a second and a rep is a handful of crossings, so a *recording* session never approaches it. A **paused** session is the case: nothing drains while the chip keeps pushing. |
+| `CaptureLog` | 60 packets **and** 3200 chars | Two bounds, because a chip that fragments hard sends many more and shorter packets than the count assumes. |
+| `PacketAssembler.MAX_MESSAGE` | 256 bytes | `0xA5` appears inside payloads; a false sync byte claiming 255 crossings would otherwise wait for bytes that never come. |
+
+When a bound bites, the count is kept (`dropped`, `seen`) rather than the loss being silent. `SplitLog` drops the *oldest* rows: the last reps of a session are the ones being looked at afterwards, and a truncated head shows up in the rep numbers where a truncated tail would not.
+
+**Static footprint**, from `monkeyc -r --build-stats 0` against each device's own `watchApp` memory limit:
+
+| device | data | code | total | limit | used |
+| --- | --- | --- | --- | --- | --- |
+| `fr645m` | 5 756 | 24 699 | 30 455 | 1 048 576 | 2.9% |
+| `fenix5plus` | 5 756 | 24 699 | 30 455 | 1 310 720 | 2.3% |
+| `venu` | 5 756 | 24 699 | 30 455 | 1 048 576 | 2.9% |
+| `fr265` / `fr965` / `fenix8solar47mm` | 6 210 | 18 741 | 24 951 | 786 432 | 3.2% |
+
+**A limit that bites the tests, not the app.** Monkey C caps the `globals` module at 253 members on API 3.x devices, and every `(:test)` function is a global. The unit-test build passed that at 222 tests and no longer compiles for `fr645m` or `venu`. The release build for those devices is clean — `(:test)` is stripped — so this constrains where the suite runs, not what ships. See `AGENTS.md`.
+
+**Nothing on the notification path writes to flash or builds a string** outside capture mode. A `Storage` write inside `onCharacteristicChanged` blocks long enough to lose the packets that follow, and a fragmented burst arrives milliseconds apart — so the packets it loses are the tail of the very rep being recorded. `CaptureLog` never writes; `flush()` does, from `stop()`.
 - **Garmin Connect charting rounds floats** and shows uint32 fine; if you want µs visible in Connect's UI, the uint32 fields are the ones to chart.
 - **Lap/session developer fields dropped without a yield** — handled with a deferred `addLap()`.
 

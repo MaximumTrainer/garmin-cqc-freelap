@@ -155,6 +155,22 @@ module TestSupport {
         return out;
     }
 
+    // A rig over a session double that keeps counts but not values, for
+    // measuring the app's memory rather than the test double's.
+    function quietRig(spec as Lang.String) as Rig {
+        return recorderOn(new QuietSession(), spec);
+    }
+
+    // Run `count` complete reps through a rig, draining between them the way a
+    // real session does. This is the 60-rep soak issue #26 asks for, minus the
+    // radio.
+    function runReps(rig as Rig, count as Lang.Number) as Void {
+        for (var i = 0; i < count; i++) {
+            rig.engine.onRepBurst(workedRep(), 1000 + i * 30000);
+            tickUntilIdle(rig.recorder, 30);
+        }
+    }
+
     // ---- settings -----------------------------------------------------------
 
     // Save and restore the course slots and what selects them, so a test can

@@ -9,7 +9,16 @@ using Toybox.Timer;
 // Field ids are the app's own namespace. IMPORTANT: Field objects must stay
 // referenced at class scope for the life of the session, otherwise the SDK
 // silently drops them (known FitContributor gotcha).
+const SPLIT_LOG_KEY = "lastSessionSplits";
+
 class FitRecorder {
+    // A backstop, not a working limit. The queue drains at one record per
+    // second and a rep is a handful of crossings, so a recording session never
+    // approaches this. A *paused* session is the case that matters: nothing
+    // drains while the chip keeps pushing, and without a cap that is unbounded
+    // growth in the one state where nothing empties it.
+    static const MAX_QUEUE = 400;
+
     // Record-level (per 1 Hz record)
     var fSplitUs;  var fCumUs;   var fDistM;   var fVel;   var fSpeed;
     var fPace;     var fTxIdx;   var fTxCode;  var fRep;   var fEstMs;
@@ -31,9 +40,10 @@ class FitRecorder {
     // drops every lap but the last.
     var _queue = [];
     var _lapDue = false;     // lap fields are set; addLap() is owed a tick
+    var droppedFromQueue = 0;
     var _tick = null;
     var _wroteThisTick = false;
-    var _log = [];           // all SplitEvent arrays for storage export
+    var _log = new SplitLog();   // every split, for export; bounded
     var _chipId = "";
     var _engine = null;
 
@@ -70,7 +80,8 @@ class FitRecorder {
         _queue = [];
         _lapDue = false;
         _wroteThisTick = false;
-        _log = [];
+        droppedFromQueue = 0;
+        _log.clear();
         createFields();
         session.start();
         recording = true;
@@ -109,7 +120,7 @@ class FitRecorder {
 
     // ---- SplitEngine listener --------------------------------------------
     function onSplit(ev as SplitEvent) as Void {
-        _queue.add(ev);
+        enqueue(ev);
         _log.add(ev.toArray());
         if (!ev.chipId.equals("")) { _chipId = ev.chipId; }
     }
@@ -117,8 +128,21 @@ class FitRecorder {
     function onRepComplete(r as RepSummary) as Void {
         // Queued behind the rep's own splits, so the lap cannot be cut before
         // every one of its records is on disk.
-        _queue.add(r);
+        enqueue(r);
     }
+
+    // Oldest first out, so what survives is what has not been written yet.
+    hidden function enqueue(item) as Void {
+        _queue.add(item);
+        while (_queue.size() > MAX_QUEUE) {
+            _queue = _queue.slice(1, null);
+            droppedFromQueue++;
+        }
+    }
+
+    function queueSize() as Lang.Number { return _queue.size(); }
+
+    function log() as SplitLog { return _log; }
 
     // ---- 1 Hz tick: drain one split per record --------------------------
     // Exactly one of three things happens per tick, in this order: close a lap
@@ -261,7 +285,7 @@ class FitRecorder {
             sTotDist.setData(_engine.totalDistM);
         }
         sChipId.setData(_chipId.equals("") ? "unknown" : _chipId);
-        Application.Storage.setValue("lastSessionSplits", _log);
+        _log.flush(new StorageSink(), SPLIT_LOG_KEY);
         session.stop();
         session.save();
         session = null;
