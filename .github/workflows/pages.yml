@@ -1,0 +1,73 @@
+# Publishes the project website (issue #31).
+#
+# The site is `site/` — a plain static page, no Jekyll. That is deliberate:
+# GitHub Pages' "deploy from /docs" would publish everything in docs/,
+# including the unsent letter to Freelap and the unsubmitted store listing.
+# Excluding them with a _config.yml works until someone adds the next working
+# document and forgets. Publishing a folder that contains only the site means
+# there is nothing to remember.
+#
+# Screenshots are copied in here rather than duplicated into site/, so there is
+# one copy of each image in the repository and docs/screenshots stays the place
+# they live.
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/screenshots/*.png'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never two deploys at once, and never cancel one half-done.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # The same check lint.yml runs. A broken link is much more embarrassing
+      # on the published site than in the repo, so it gates the deploy too.
+      - name: Check links
+        run: python tools/check_links.py
+
+      - name: Assemble the site
+        run: |
+          mkdir -p _site/screenshots
+          cp site/index.html site/style.css _site/
+          # site/assets.txt is the single list of images the page needs;
+          # test_site.py asserts it matches what index.html references.
+          grep -v '^#' site/assets.txt | grep -v '^$' | while read -r f; do
+            cp "docs/screenshots/$f" "_site/screenshots/$f"
+          done
+          ls -R _site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

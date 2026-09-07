@@ -1,0 +1,163 @@
+/* One page, no framework, no build step beyond copying files.
+ *
+ * Two things this stylesheet has to get right, both acceptance criteria on
+ * issue #31: nothing may overflow a 360px-wide screen, and every text colour
+ * must clear WCAG AA (4.5:1) against its background in *both* renderings.
+ * The measured ratios are on each pair below - recompute them if you change a
+ * colour, do not assume. */
+
+:root {
+    color-scheme: light dark;
+
+    --bg: #ffffff;
+    --fg: #1a1a1a;          /* 17.4:1 on --bg */
+    --muted: #4a4a4a;       /*  9.0:1 on --bg */
+    --link: #0b5cad;        /*  6.7:1 on --bg */
+    --rule: #d9dde3;
+    --card: #f6f7f9;
+
+    --warn-bg: #fff4d6;
+    --warn-fg: #5c4400;     /*  8.4:1 on --warn-bg */
+    --warn-edge: #c98a00;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #12141a;
+        --fg: #e8eaf0;      /* 15.3:1 on --bg */
+        --muted: #a8aec0;   /*  8.3:1 on --bg */
+        --link: #7fb3ff;    /*  8.6:1 on --bg */
+        --rule: #2a2f3a;
+        --card: #1a1d25;
+
+        --warn-bg: #2e2410;
+        --warn-fg: #ffd98a; /* 11.3:1 on --warn-bg */
+        --warn-edge: #8a6d1f;
+    }
+}
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+    margin: 0;
+    padding: 0 1rem 4rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+    /* Belt and braces for the no-horizontal-scroll criterion: nothing should
+     * overflow, and if something ever does, it does not drag the page sideways. */
+    overflow-x: hidden;
+}
+
+.wrap {
+    max-width: 46rem;
+    margin: 0 auto;
+}
+
+header { padding: 2rem 0 0; }
+
+h1 {
+    margin: 0 0 .25rem;
+    font-size: 1.9rem;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+}
+
+.tagline {
+    margin: 0 0 1.25rem;
+    color: var(--muted);
+    font-size: 1.05rem;
+}
+
+h2 {
+    margin: 2.5rem 0 .75rem;
+    font-size: 1.25rem;
+    line-height: 1.3;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--rule);
+}
+
+h2:first-of-type { border-top: 0; padding-top: 0; }
+
+h3 { margin: 1.5rem 0 .5rem; font-size: 1rem; }
+
+p, li { overflow-wrap: break-word; }
+
+a { color: var(--link); }
+a:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+
+code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .9em;
+    background: var(--card);
+    padding: .1em .35em;
+    border-radius: 3px;
+}
+
+/* The status notice. It sits directly under the tagline so that it is on
+ * screen without scrolling on a 360x640 phone - issue #31 asks for exactly
+ * that, because a page that reads like a product page for something which
+ * cannot yet talk to the chip would be the most visible untrue thing here. */
+.status {
+    margin: 0 0 2rem;
+    padding: 1rem 1.1rem;
+    background: var(--warn-bg);
+    color: var(--warn-fg);
+    border: 1px solid var(--warn-edge);
+    border-radius: 6px;
+}
+
+.status p { margin: 0; }
+.status p + p { margin-top: .6rem; }
+.status strong { font-weight: 700; }
+.status a { color: inherit; }
+
+.shots {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+    gap: 1.5rem;
+    margin: 1rem 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.shots li { margin: 0; }
+
+.shots img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: var(--card);
+}
+
+.shots figcaption,
+.caption {
+    margin-top: .5rem;
+    color: var(--muted);
+    font-size: .875rem;
+}
+
+.caption strong { color: var(--fg); }
+
+figure { margin: 0; }
+
+dl { margin: 0; }
+dt { font-weight: 600; margin-top: 1rem; }
+dd { margin: .2rem 0 0; color: var(--muted); }
+
+footer {
+    margin-top: 3rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--rule);
+    color: var(--muted);
+    font-size: .875rem;
+}
+
+footer p { margin: .5rem 0; }

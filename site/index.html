@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Freelap for Garmin — split times from an FxChip BLE</title>
+<meta name="description" content="An open-source Connect IQ watch app that records Freelap FxChip BLE crossings into a Garmin activity. In development; not yet verified against a real chip.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+<header>
+    <h1>Freelap for Garmin</h1>
+    <p class="tagline">An open-source Garmin Connect IQ watch app that reads a Freelap
+    FxChip BLE and writes every transmitter crossing into your activity file.</p>
+</header>
+
+<!-- Directly under the tagline on purpose. Issue #31 requires this to be on
+     screen without scrolling at 360px, because the app cannot yet read a real
+     chip and a page that implied otherwise would be the most visible untrue
+     thing in the repository. When #7 and #25 pass, this is what changes. -->
+<div class="status" role="note">
+    <p><strong>Status: in development. This has never been run against a real
+    Freelap chip.</strong></p>
+    <p>The packet format the app decodes is an educated guess and is
+    <a href="https://github.com/MaximumTrainer/garmin-cqc-freelap/issues/7">still
+    unconfirmed</a>; nobody has yet
+    <a href="https://github.com/MaximumTrainer/garmin-cqc-freelap/issues/25">timed
+    twenty reps on a track against MyFreelap</a>. Everything below describes what
+    is built and tested against simulated data. Do not expect it to work with a
+    chip in your hand today.</p>
+</div>
+
+<h2>What it does</h2>
+
+<p>A Freelap FxChip records the moment you cross each transmitter. This app
+takes those crossings over Bluetooth and puts them in your Garmin activity, so
+your splits sit in your normal training log rather than in a separate phone
+app.</p>
+
+<p>Times stay exactly as the chip measured them — whole microseconds, from the
+chip to the FIT file, with nothing rounded on the way. You describe your course
+once and the app works out the distances, velocity and pace for each split, and
+cuts one Garmin lap per Freelap rep.</p>
+
+<h2>What you need</h2>
+
+<dl>
+    <dt>A Freelap FxChip BLE</dt>
+    <dd>The watch cannot sense Freelap's magnetic transmitters itself. The chip
+    does that; this app reads what the chip recorded.</dd>
+
+    <dt>Freelap transmitters</dt>
+    <dd>At least a start and a finish. More gives you more splits per rep.</dd>
+
+    <dt>A Garmin watch running Connect IQ 3.1 or later</dt>
+    <dd>With Bluetooth Low Energy available to apps. See the
+    <a href="https://github.com/MaximumTrainer/garmin-cqc-freelap/blob/main/manifest.xml">device
+    list</a> — not all of them have been tested.</dd>
+</dl>
+
+<h2>What it looks like</h2>
+
+<ul class="shots">
+    <li><figure>
+        <img src="screenshots/fr265.png" width="631" height="897"
+             alt="A Forerunner 265 showing 'Scanning for chip', 'START to begin', and the course in force: Course 1, 30 m.">
+        <figcaption>Before a session: chip status and the course in force.
+        Connect IQ simulator capture.</figcaption>
+    </figure></li>
+
+    <li><figure>
+        <img src="screenshots/fr265-recording.png" width="631" height="897"
+             alt="A Forerunner 265 showing 'Chip OK' in green, a large 8.99 m/s reading, the line '4.45s 40m 1:51/km', and 'Rep 1 11.93s'.">
+        <figcaption>While recording: last split velocity, its time, distance
+        and pace, and the rep count. Connect IQ simulator capture —
+        <strong>the split values shown were injected for the screenshot, not
+        recorded</strong>, because there is no chip to record them from
+        yet.</figcaption>
+    </figure></li>
+
+    <li><figure>
+        <img src="screenshots/fr265-course-list.png" width="631" height="897"
+             alt="A Forerunner 265 showing a 'Choose course' menu listing Course 1 at 30 m and Course 2 at 100 m.">
+        <figcaption>Picking one of eight configured courses on the watch.
+        Connect IQ simulator capture.</figcaption>
+    </figure></li>
+
+    <li><figure>
+        <img src="screenshots/fr265-quick-course.png" width="631" height="897"
+             alt="A Forerunner 265 showing a 'Quick course' picker set to 60 m, with the hint 'UP/DOWN then START'.">
+        <figcaption>Or dialling a distance on the wrist, 10–400 m. Connect IQ
+        simulator capture.</figcaption>
+    </figure></li>
+</ul>
+
+<h2>Where your splits end up</h2>
+
+<p>In the activity's FIT file, as developer fields: one Garmin lap per rep with
+its totals, per-split fields on every record, and the session summary. They sync
+to Garmin Connect like any other activity, and two scripts pull them back out as
+CSV if you want the exact microseconds, which Connect's own display rounds.</p>
+
+<p><a href="https://github.com/MaximumTrainer/garmin-cqc-freelap/blob/main/docs/EXPORT.md">Getting
+the splits out</a> covers both routes and what every column means — including
+which single number in the file is an estimate rather than a measurement.</p>
+
+<h2>Privacy</h2>
+
+<p><strong>Nothing leaves your watch.</strong> The app has no network permission
+and makes no network requests. It talks to your Freelap chip over Bluetooth Low
+Energy and writes to your own activity file, which syncs to Garmin Connect
+exactly as any other activity does. The app stores your course settings and the
+last session's splits on the watch, and the name of the chip you last connected
+to so it can prefer it next time. No analytics, no accounts, no third-party
+services.</p>
+
+<h2>Building it</h2>
+
+<p>You need the Connect IQ SDK and a developer key; there is nothing to install
+from a store yet. The
+<a href="https://github.com/MaximumTrainer/garmin-cqc-freelap#build">build and
+test instructions</a> are in the repository, and
+<a href="https://github.com/MaximumTrainer/garmin-cqc-freelap/blob/main/docs/DESIGN.md">the
+design document</a> explains how the whole thing fits together — the timing
+model, the FIT layout and the decisions behind them.</p>
+
+<p>If you have an FxChip and a packet sniffer, the most useful thing anyone
+could do right now is
+<a href="https://github.com/MaximumTrainer/garmin-cqc-freelap/blob/main/docs/REVERSE-ENGINEERING.md">work
+out the real protocol</a>. Everything downstream of it is built and waiting.</p>
+
+<h2>Questions, bugs, and helping out</h2>
+
+<p>Everything is tracked in
+<a href="https://github.com/MaximumTrainer/garmin-cqc-freelap/issues">the issue
+tracker</a>. The source is on
+<a href="https://github.com/MaximumTrainer/garmin-cqc-freelap">GitHub</a>.</p>
+
+<footer>
+    <p>MIT licensed. Copyright © 2026 MaximumTrainer.</p>
+
+    <p><strong>Freelap</strong> is a trademark of Freelap SA. This project is not
+    made by, endorsed by, or affiliated with Freelap SA. It is an independent,
+    open-source project that reads the chip's Bluetooth output the same way any
+    BLE client can. Garmin, Connect IQ and Garmin Connect are trademarks of
+    Garmin Ltd.</p>
+</footer>
+
+</div>
+</body>
+</html>

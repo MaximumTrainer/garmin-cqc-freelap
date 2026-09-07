@@ -1,0 +1,9 @@
+# Screenshots the page references, copied from docs/screenshots at deploy time
+# rather than duplicated into site/. The deploy workflow reads this file, and
+# tools/tests/test_site.py asserts it matches what index.html actually uses -
+# an image the page references but the workflow does not copy is a broken
+# image on the live site and nothing else would catch it.
+fr265.png
+fr265-recording.png
+fr265-course-list.png
+fr265-quick-course.png

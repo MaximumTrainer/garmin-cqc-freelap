@@ -22,8 +22,10 @@ source/model/SplitEngine.mc         crossings → splits → reps
 source/fit/FitRecorder.mc           session + developer fields + laps
 source/ui/                          activity screen, buttons, save menu
 source-test/                        Monkey C unit tests (see AGENTS.md)
+site/                               the project website (see below)
 tools/decode_capture.py             find timestamp fields in a BLE capture
 tools/fake_chip.py                  BLE peripheral: one rep, N synthetic reps, or a capture replay
+tools/check_links.py                internal links in the site and the docs
 tools/validate_resources.py         what CI can check without the Garmin SDK
 tools/fit_fields.py                 read the fl_* developer fields out of a .FIT
 tools/splits_to_csv.py              a dumped on-watch split log -> CSV
@@ -37,6 +39,18 @@ docs/screenshots/                   the main view at each target resolution
 captures/                           BLE captures the protocol was derived from
 docs/REVERSE-ENGINEERING.md         sniffing plan
 ```
+
+## Website
+
+<https://maximumtrainer.github.io/garmin-cqc-freelap/>
+
+Published by `.github/workflows/pages.yml` from **`site/`** — a plain static
+page, no Jekyll. `docs/` is deliberately *not* the publishing source: Pages
+serving `/docs` would also publish the unsent letter to Freelap and the
+unsubmitted store listing, and an exclude list only works until the next
+working document is added. The screenshots the page uses are listed in
+`site/assets.txt` and copied in at deploy time, so there is one copy of each
+image in the repository.
 
 ## Work tracking
 
