@@ -81,7 +81,7 @@ function testStartScanEntersTheScanningState(logger as Test.Logger) as Lang.Bool
 function testStartCreatesAnActivitySessionWithoutException(logger as Test.Logger) as Lang.Boolean {
     var course = new Course("S:0;L:30;F:100", "startup");
     var recorder = new FitRecorder();
-    var engine = new SplitEngine(course, recorder);
+    var engine = new SplitEngine(course, recorder, 150);
 
     recorder.start(engine);
 

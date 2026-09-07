@@ -1,4 +1,4 @@
-using Toybox.Application;
+using Toybox.Application.Properties;
 using Toybox.Lang;
 using Toybox.System;
 
@@ -25,6 +25,9 @@ class RepSummary {
 // Input: FreelapProtocol.Crossing objects (chip-relative time in us + code).
 // Output: callbacks onSplit(SplitEvent) and onRepComplete(RepSummary).
 class SplitEngine {
+    // Used when the setting is missing; mirrors properties.xml.
+    static const DEFAULT_LATENCY_MS = 150;
+
     var course;
     var repNumber = 0;
     var current = [];            // SplitEvents of the rep in progress
@@ -38,11 +41,19 @@ class SplitEngine {
     var lastEvent = null;        // for the UI
     var lastRep = null;
 
-    function initialize(c as Course, l) {
+    // The primary constructor: everything the engine needs is passed in, so
+    // the whole class runs under `monkeydo /t` with no settings and no radio
+    // (AGENTS.md, "Inject, don't fetch").
+    function initialize(c as Course, l, latencyMs as Lang.Number) {
         course = c;
         listener = l;
-        var lat = Application.getApp().getProperty("bleLatencyMs");
-        if (lat != null) { bleLatencyMs = lat; }
+        bleLatencyMs = latencyMs;
+    }
+
+    // The convenience entry point the app layer uses.
+    static function fromSettings(c as Course, l) as SplitEngine {
+        var lat = Properties.getValue("bleLatencyMs");
+        return new SplitEngine(c, l, lat == null ? DEFAULT_LATENCY_MS : lat);
     }
 
     function onSessionStart() as Void {

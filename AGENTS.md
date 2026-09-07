@@ -182,10 +182,13 @@ nothing.
 
 - **Inject, don't fetch.** Domain objects take their configuration as
   constructor arguments; only the app layer touches `Application.Storage`,
-  `getProperty`, `System.getTimer()` or `Time.now()`. Known violations to fix
-  when you next touch them: `SplitEngine.initialize` reads `bleLatencyMs` from
-  properties, and `Course.loadActive` reads settings — keep the convenience
-  entry points, but make the testable constructor the primary one.
+  `Properties`, `System.getTimer()` or `Time.now()`. The pattern in place:
+  `new SplitEngine(course, listener, latencyMs)` and `new Course(spec, name)`
+  are the primary constructors, with `SplitEngine.fromSettings()` and
+  `Course.loadActive()` as the app-layer conveniences that read settings and
+  delegate. Remaining violation to fix when you next touch it:
+  `FitRecorder.initialize` reads `clearAfterWrite` and `lapPerCrossing` from
+  properties.
 - **No module-level mutable state.** `FreelapProtocol._buf` / `_expected` are
   reassembly state on a module, which makes test order matter. Either call
   `reset()` as the first line of every test, or better, move the buffer into an

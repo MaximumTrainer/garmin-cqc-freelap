@@ -75,7 +75,24 @@ For a crossing *i* with chip cumulative time `T_i` (µs) and previous crossing t
 - `velocity_mps = split_distance_m / (split_time_us / 1e6)` (m/s, the sprint-coaching number)
 - `speed_kmh = velocity_mps × 3.6`
 - `pace_s_per_km = 1000 / velocity_mps` (also shown as m:ss/km on the watch)
-- rep totals: `rep_time_us = T_finish − T_start`, `rep_distance_m = D_finish`, `rep_avg_velocity`, `rep_peak_velocity` (fastest split)
+- rep totals: `rep_time_us = T_finish − T_start`, `rep_distance_m` = the last transmitter the course could place, `rep_avg_velocity`, `rep_peak_velocity` (fastest split)
+
+Worked example, and the numbers the unit tests pin (`source-test/SplitEngineTest.mc`):
+
+| | split time | distance | velocity | speed | pace |
+| --- | --- | --- | --- | --- | --- |
+| START → LAP 1 | 4 120 000 µs | 30 m | 7.282 m/s | 26.21 km/h | 137.3 s/km |
+| LAP 1 → LAP 2 | 3 360 000 µs | 30 m | 8.929 m/s | 32.14 km/h | 112.0 s/km |
+| LAP 2 → FINISH | 4 450 000 µs | 40 m | 8.989 m/s | 32.36 km/h | 111.2 s/km |
+| **rep** | 11 930 000 µs | 100 m | 8.382 m/s avg, 8.989 peak | | |
+
+Three rules the arithmetic follows:
+
+- **Chip time stays a `Long` until the rep origin has been subtracted.** The FxChip timestamps with its own clock, which may be an absolute uptime well past 2³¹ µs; `decodeNumber(UINT32)` returns a `Long` for exactly this reason. Narrowing before the subtraction wraps the value and every derived metric with it.
+- **Durations stay integer microseconds end to end.** Nothing rounds before the FIT file.
+- **A zero-length or zero-duration split gives velocity, speed and pace of 0**, never an exception and never a fabricated number. A transmitter that double-fires, and a crossing the course cannot place, both land here.
+
+`best_rep_us` only ever considers `RepStatus.OK` reps — a "best" of 8 s from a rep where the athlete missed a transmitter would be worse than useless — while `total_distance_m` sums every rep, because the athlete ran the metres either way.
 
 If the chip reports more crossings than the course has transmitters (athlete ran through an extra Tx, or a course with mixed codes), the engine matches by code sequence first (START → LAP… → FINISH) and falls back to index order, flagging the rep as `unmatched` in a status field rather than guessing distances. The rep's distance is the last transmitter the course could actually place, so a trailing unmatched crossing cannot invent one.
 
