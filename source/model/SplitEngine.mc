@@ -121,8 +121,10 @@ class SplitEngine {
         if (cr.code == TxCode.FINISH) { finishRep(); }
     }
 
-    function finishRep() as Void {
-        if (current.size() == 0) { return; }
+    // Returns true when a rep was actually closed, so the caller can tell the
+    // athlete that the button did nothing rather than leaving them pressing it.
+    function finishRep() as Lang.Boolean {
+        if (current.size() == 0) { return false; }
         var r = new RepSummary();
         r.rep = repNumber;
         r.events = current;
@@ -154,8 +156,9 @@ class SplitEngine {
         current = [];
         lastRep = r;
         if (listener != null) { listener.onRepComplete(r); }
+        return true;
     }
 
     // Manual lap button: close the rep with what we have.
-    function forceRepEnd() as Void { finishRep(); }
+    function forceRepEnd() as Lang.Boolean { return finishRep(); }
 }

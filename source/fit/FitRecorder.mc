@@ -225,8 +225,11 @@ class FitRecorder {
     }
 
     // ---- manual lap (BACK/LAP button) -----------------------------------
-    function manualLap() as Void {
-        if (_engine != null) { _engine.forceRepEnd(); }
+    // False when there was nothing to end. The caller says so on screen: a
+    // button that silently does nothing gets pressed again, and again.
+    function manualLap() as Lang.Boolean {
+        if (_engine == null) { return false; }
+        return _engine.forceRepEnd();
     }
 
     // ---- stop / save -----------------------------------------------------

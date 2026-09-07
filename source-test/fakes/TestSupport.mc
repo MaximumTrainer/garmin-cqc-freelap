@@ -109,6 +109,16 @@ module TestSupport {
         return maxTicks;
     }
 
+    // Drive an action through MainDelegate's real dispatch, with `recorder`
+    // installed on the app so the side effects land somewhere observable.
+    function performOnApp(recorder, action as Lang.Symbol) as Void {
+        var app = Application.getApp() as FreelapApp;
+        var previous = app.recorder;
+        app.recorder = recorder;
+        new MainDelegate().perform(action);
+        app.recorder = previous;
+    }
+
     // ---- MainView layout ---------------------------------------------------
 
     // An off-screen Dc the size of this device's display, so a view can be

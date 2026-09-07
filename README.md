@@ -79,7 +79,9 @@ TDD loop this project follows.
 1. Settings (Garmin Connect app → the watch → Connect IQ apps → Freelap): enter your course, e.g. `S:0;L:30;L:60;F:100`, enable *Capture mode*.
 2. Open the app; it scans for the chip. With the placeholder UUIDs it will only find `tools/fake_chip.py` or a chip whose name starts with `FxChip`/`Freelap`.
 3. Press START, run a rep. In capture mode the last raw packet is shown on screen and the last 60 packets are kept in app storage (written at exit).
-4. BACK while recording = manual rep end; START = pause; BACK while paused = save/discard.
+4. Controls: START = start / pause / resume. BACK = end the current rep while recording,
+   or open Save/Discard while paused. On a touch screen, tapping the upper half is START and
+   the lower half is BACK. Ending a rep with no crossings shows *No splits* and writes nothing.
    There is no way out of a running session without pausing first, which is deliberate. If the
    watch closes the app with a session still open, the session is **saved**, not discarded.
 

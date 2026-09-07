@@ -81,6 +81,22 @@ function testTheBigNumberIsNotShrunkAwayOnALargeDisplay(logger as Test.Logger) a
 }
 
 (:test)
+function testANoticeFitsThisDisplay(logger as Test.Logger) as Lang.Boolean {
+    var app = Application.getApp() as FreelapApp;
+    app.setNotice("No splits");
+
+    var trace = TestSupport.traceMainView(TestSupport.engineWithARep(), false);
+
+    Test.assertEqualMessage(trace.size(), 5, "status, velocity, detail, rep line, notice");
+    TestSupport.assertLayoutIsSane(trace, "live screen with a notice");
+    var notice = trace[4] as Lang.Dictionary;
+    Test.assertEqualMessage(notice.get(:text), "No splits", "the notice is the last line");
+
+    app.clearNotice();
+    return true;
+}
+
+(:test)
 function testCaptureModeLineFitsThisDisplay(logger as Test.Logger) as Lang.Boolean {
     var app = Application.getApp() as FreelapApp;
     var ble = app.ble;
