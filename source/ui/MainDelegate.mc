@@ -1,4 +1,5 @@
 using Toybox.Application;
+using Toybox.Graphics;
 using Toybox.Lang;
 using Toybox.System;
 using Toybox.WatchUi;
@@ -27,10 +28,10 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
     }
 
     // Is there anything worth putting in a menu on the idle screen?
+    // The idle menu always has the course items in it, so it is always worth
+    // opening once there is no session running.
     static function hasIdleMenu(app) as Lang.Boolean {
-        if (app.ble == null) { return false; }
-        return app.ble.captureMode || app.ble.gaveUp || app.ble.candidates.size() > 1 ||
-               !app.ble.rememberedName.equals("");
+        return CourseMenu.canChoose(app.recorder);
     }
 
     function onSelect() as Lang.Boolean {
@@ -71,6 +72,12 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
             dumpCapture();
         } else if (action == :rescan) {
             if (app.ble != null) { app.ble.rescan(); }
+        } else if (action == :courseMenu) {
+            if (refuseIfRecording(app)) { return; }
+            openCourseMenu();
+        } else if (action == :quickCourse) {
+            if (refuseIfRecording(app)) { return; }
+            openQuickCoursePicker();
         } else if (action == :forgetChip) {
             if (app.ble != null) {
                 app.ble.forgetChip();
@@ -93,6 +100,31 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
 
     // Every matching chip in range, strongest first, so the athlete can pick
     // when the automatic choice is wrong.
+    // The course belongs to the session once one is running: changing it now
+    // would re-derive the distances of splits already written.
+    hidden function refuseIfRecording(app) as Lang.Boolean {
+        if (CourseMenu.canChoose(app.recorder)) { return false; }
+        app.setNotice(WatchUi.loadResource(Rez.Strings.CourseLocked));
+        WatchUi.requestUpdate();
+        return true;
+    }
+
+    function openCourseMenu() as Void {
+        var entries = CourseMenu.entries();
+        var menu = new WatchUi.Menu2({ :title => WatchUi.loadResource(Rez.Strings.ChooseCourse) });
+        for (var i = 0; i < entries.size(); i++) {
+            var entry = entries[i] as CourseEntry;
+            menu.addItem(new WatchUi.MenuItem(entry.label(), entry.detail(), entry.index, null));
+        }
+        WatchUi.pushView(menu, new CourseMenuDelegate(), WatchUi.SLIDE_UP);
+    }
+
+    function openQuickCoursePicker() as Void {
+        var start = Settings.quickDistanceM();
+        if (start <= 0) { start = 30; }
+        WatchUi.pushView(new QuickCourseView(start), new QuickCourseDelegate(), WatchUi.SLIDE_UP);
+    }
+
     hidden function openChooseChipMenu() as Void {
         var app = Application.getApp();
         if (app.ble == null) { return; }
@@ -110,6 +142,11 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
     function openIdleMenu() as Void {
         var app = Application.getApp();
         var menu = new WatchUi.Menu2({ :title => "Freelap" });
+        menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.ChooseCourse),
+                                          app.course != null ? app.course.name : null,
+                                          :course, null));
+        menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.QuickCourse), null,
+                                          :quick, null));
         if (app.ble != null && app.ble.gaveUp) {
             menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.Rescan), null, :rescan, null));
         }
@@ -187,6 +224,12 @@ class IdleMenuDelegate extends WatchUi.Menu2InputDelegate {
         } else if (id == :choose) {
             new MainDelegate().openChooseChip();
             return;   // the chooser replaces this menu
+        } else if (id == :course) {
+            new MainDelegate().perform(:courseMenu);
+            return;
+        } else if (id == :quick) {
+            new MainDelegate().perform(:quickCourse);
+            return;
         }
         WatchUi.popView(WatchUi.SLIDE_DOWN);
     }
@@ -214,6 +257,80 @@ class ChooseChipDelegate extends WatchUi.Menu2InputDelegate {
         }
         WatchUi.popView(WatchUi.SLIDE_DOWN);
         WatchUi.popView(WatchUi.SLIDE_DOWN);
+    }
+}
+
+// Picking one of the configured courses. The item id is the settings slot.
+class CourseMenuDelegate extends WatchUi.Menu2InputDelegate {
+    function initialize() { Menu2InputDelegate.initialize(); }
+
+    function onSelect(item as WatchUi.MenuItem) as Void {
+        var app = Application.getApp();
+        app.applyCourse(CourseMenu.select(item.getId() as Lang.Number));
+        WatchUi.popView(WatchUi.SLIDE_DOWN);
+        WatchUi.popView(WatchUi.SLIDE_DOWN);
+    }
+}
+
+// Dialling a quick course: START + FINISH, 10-400 m in 5 m steps.
+class QuickCourseView extends WatchUi.View {
+    var metres = 30;
+
+    function initialize(startMetres as Lang.Number) {
+        View.initialize();
+        metres = Settings.clampQuickDistance(startMetres);
+    }
+
+    function onUpdate(dc as Graphics.Dc) as Void {
+        var w = dc.getWidth();
+        var h = dc.getHeight();
+        dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
+        dc.clear();
+        dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(w / 2, h * 0.16, Graphics.FONT_TINY,
+                    WatchUi.loadResource(Rez.Strings.QuickCourse), Graphics.TEXT_JUSTIFY_CENTER);
+        dc.drawText(w / 2, h / 2, Graphics.FONT_NUMBER_MEDIUM, metres.format("%d"),
+                    Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        dc.drawText(w / 2, h * 0.68, Graphics.FONT_SMALL, "m", Graphics.TEXT_JUSTIFY_CENTER);
+        dc.drawText(w / 2, h * 0.80, Graphics.FONT_XTINY,
+                    WatchUi.loadResource(Rez.Strings.QuickHint), Graphics.TEXT_JUSTIFY_CENTER);
+    }
+}
+
+class QuickCourseDelegate extends WatchUi.BehaviorDelegate {
+    function initialize() { BehaviorDelegate.initialize(); }
+
+    hidden function step(direction as Lang.Number) as Lang.Boolean {
+        var view = quickView();
+        if (view != null) {
+            view.metres = CourseMenu.nextQuickDistance(view.metres, direction);
+            WatchUi.requestUpdate();
+        }
+        return true;
+    }
+
+    function onNextPage() as Lang.Boolean { return step(-1); }
+    function onPreviousPage() as Lang.Boolean { return step(1); }
+
+    function onSelect() as Lang.Boolean {
+        var view = quickView();
+        if (view != null) {
+            var app = Application.getApp();
+            app.applyCourse(CourseMenu.selectQuick(view.metres));
+        }
+        WatchUi.popView(WatchUi.SLIDE_DOWN);
+        WatchUi.popView(WatchUi.SLIDE_DOWN);
+        return true;
+    }
+
+    function onBack() as Lang.Boolean {
+        WatchUi.popView(WatchUi.SLIDE_DOWN);
+        return true;
+    }
+
+    hidden function quickView() as QuickCourseView? {
+        var view = WatchUi.getCurrentView()[0];
+        return view instanceof QuickCourseView ? view : null;
     }
 }
 

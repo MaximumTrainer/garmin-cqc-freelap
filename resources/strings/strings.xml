@@ -22,6 +22,9 @@
     <string id="Discard">Discard</string>
     <string id="DumpCapture">Dump capture</string>
     <string id="Rescan">Rescan for chip</string>
+    <string id="ChooseCourse">Choose course</string>
+    <string id="QuickCourse">Quick course</string>
+    <string id="QuickHint">UP/DOWN then START</string>
     <string id="ChooseChip">Choose chip</string>
     <string id="ForgetChip">Forget chip</string>
     <string id="ChipForgotten">Chip forgotten</string>
