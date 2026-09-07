@@ -26,6 +26,12 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
         return rec.recording ? :manualLap : :saveMenu;
     }
 
+    // Is there anything worth putting in a menu on the idle screen?
+    static function hasIdleMenu(app) as Lang.Boolean {
+        if (app.ble == null) { return false; }
+        return app.ble.captureMode || app.ble.gaveUp;
+    }
+
     function onSelect() as Lang.Boolean {
         perform(selectAction(Application.getApp().recorder));
         return true;
@@ -58,10 +64,12 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
             }
         } else if (action == :saveMenu) {
             openSaveMenu();
-        } else if (action == :captureMenu) {
-            openCaptureMenu();
+        } else if (action == :idleMenu) {
+            openIdleMenu();
         } else if (action == :dumpCapture) {
             dumpCapture();
+        } else if (action == :rescan) {
+            if (app.ble != null) { app.ble.rescan(); }
         }
         WatchUi.requestUpdate();
     }
@@ -77,11 +85,17 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
         WatchUi.pushView(menu, new SaveMenuDelegate(), WatchUi.SLIDE_UP);
     }
 
-    hidden function openCaptureMenu() as Void {
+    hidden function openIdleMenu() as Void {
+        var app = Application.getApp();
         var menu = new WatchUi.Menu2({ :title => "Freelap" });
-        menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.DumpCapture), null, :dump, null));
+        if (app.ble != null && app.ble.gaveUp) {
+            menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.Rescan), null, :rescan, null));
+        }
+        if (app.ble != null && app.ble.captureMode) {
+            menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.DumpCapture), null, :dump, null));
+        }
         menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.Exit), null, :exit, null));
-        WatchUi.pushView(menu, new CaptureMenuDelegate(), WatchUi.SLIDE_UP);
+        WatchUi.pushView(menu, new IdleMenuDelegate(), WatchUi.SLIDE_UP);
     }
 
     // Prints the rolling packet log to the CIQ console in the shape
@@ -103,12 +117,13 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
     // Extracted so the decision is testable without a view stack: the rule
     // that an active session is never left without asking is the one thing
     // here that costs an athlete a session if it regresses.
-    static function backAction(rec, captureMode as Lang.Boolean) as Lang.Symbol {
+    // `idleMenu` is true when there is something to offer on the idle screen
+    // besides leaving - a rescan after the app gave up on the chip, or a
+    // capture dump. When there is not, BACK just exits: two presses to leave an
+    // app that is doing nothing would be worse than the problem.
+    static function backAction(rec, idleMenu as Lang.Boolean) as Lang.Symbol {
         if (rec == null || rec.session == null) {
-            // With capture mode on there is something to do here besides
-            // leaving: dump the packets that were just collected. Exit is the
-            // second item, so BACK never traps the athlete in a menu.
-            return captureMode ? :captureMenu : :exit;
+            return idleMenu ? :idleMenu : :exit;
         }
         if (rec.recording) { return :manualLap; }
         return :saveMenu;
@@ -116,7 +131,7 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
 
     function onBack() as Lang.Boolean {
         var app = Application.getApp();
-        var action = backAction(app.recorder, app.ble != null && app.ble.captureMode);
+        var action = backAction(app.recorder, hasIdleMenu(app));
         if (action == :exit) {
             return false;   // nothing to lose; leave the app
         }
@@ -127,12 +142,15 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
     }
 }
 
-class CaptureMenuDelegate extends WatchUi.Menu2InputDelegate {
+class IdleMenuDelegate extends WatchUi.Menu2InputDelegate {
     function initialize() { Menu2InputDelegate.initialize(); }
 
     function onSelect(item as WatchUi.MenuItem) as Void {
-        if (item.getId() == :dump) {
+        var id = item.getId();
+        if (id == :dump) {
             new MainDelegate().dumpCapture();
+        } else if (id == :rescan) {
+            new MainDelegate().perform(:rescan);
         }
         WatchUi.popView(WatchUi.SLIDE_DOWN);
     }

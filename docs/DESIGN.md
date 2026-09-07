@@ -223,14 +223,23 @@ State machine:
 IDLE ─start─▶ SCANNING ─match─▶ PAIRING ─connected─▶ DISCOVERING ─cccd written─▶ SUBSCRIBED
    ▲                                  │                    │                          │
    └────────── user cancel ◀──────────┴── fail/timeout ◀───┴──── disconnect ──────────┘
-                                                                 (auto-retry: rescan with backoff 1,2,4,8 s, max 5)
+                                                                 (auto-retry: rescan with backoff 1,2,4,8,16 s, then stop)
 ```
+
+**Backoff, and when to stop.** Five attempts at 1, 2, 4, 8 and 16 s — 31 s in all. Long enough to ride out a lap of the track with the chip out of range; short enough that a chip which is simply switched off is not hammered for the rest of the session, which costs battery in the middle of a workout. After the fifth failure `gaveUp` is set, the screen shows *No chip*, and nothing further happens until the athlete asks: BACK on the idle screen then opens a menu offering **Rescan for chip** (and Exit, so BACK never traps you). The menu only appears when there is something in it — a rescan to offer or a capture to dump — because two presses to leave an app that is doing nothing would be worse than the problem it solves.
 
 Device match (in order): a remembered device name/address from the last session; a service UUID from `FreelapProtocol.SERVICE_UUID`; a name prefix (`"FxChip"`, `"Freelap"`, `"Relay"`) as a fallback. The matcher lives in `FreelapProtocol` so it can be corrected once the real advertising is known.
 
 Subscribing: after `onConnectedStateChanged` reports connected, get service → get notify characteristic → get CCCD descriptor → `requestWrite([0x01,0x00]b)`. `onDescriptorWrite` with status OK moves to SUBSCRIBED. Some chips need a "start session" write to a command characteristic first; the adapter has a hook (`getHandshakeWrites()`) that returns a list of `[charUuid, bytes]` to send in sequence, empty by default.
 
-Reception: `onCharacteristicChanged(char, value)` stamps `System.getTimer()` and passes `value` to the adapter. Packets over 20 bytes may be fragmented by the chip; the adapter has a reassembly buffer keyed by a length/sequence field once you know the format.
+Reception: `onCharacteristicChanged(char, value)` stamps `System.getTimer()` and passes `value` to a `PacketAssembler` the delegate owns. A notification carries at most 20 bytes, so a rep of more than three crossings arrives fragmented; the assembler holds the partial message between them. `FreelapProtocol` supplies the framing — `expectedLength(bytes)` and `decodeMessage(bytes)` — and stays the only file that knows the packet format.
+
+The buffer is an object rather than module state on `FreelapProtocol` for two reasons, and the second is the one that bites:
+
+- Module-level mutable state makes test order matter: a test that leaves half a message in the buffer breaks the *next* test, not itself.
+- **On a link drop the buffer has to be thrown away.** The tail of a message from before the drop, concatenated onto the head of one after it, decodes to plausible and completely wrong crossings — the length was fixed by the first fragment, so nothing downstream can tell. `source-test/ReconnectTest.mc` demonstrates that failure explicitly and then asserts the reset prevents it. Owning the buffer is what makes "reset it on disconnect" a thing that can be tested at all.
+
+The assembler also refuses a claimed length over 256 bytes. `0xA5` appears inside payloads, so a false sync byte would otherwise leave it waiting for bytes that never arrive.
 
 Multiple athletes: a Freelap Relay Coach BLE aggregates several chips. The same design works; the adapter would then carry a chip-id per packet and the engine keeps one `RepState` per chip. The skeleton is single-chip with the chip-id plumbed through so the extension is mechanical.
 

@@ -26,6 +26,10 @@ module BleState {
 // FreelapProtocol -> hand crossings to the SplitEngine. Reconnects with
 // backoff on drop.
 class FreelapBleDelegate extends Ble.BleDelegate {
+    // Five attempts spans about 31 seconds. Past that the chip is off, not out
+    // of range, and retrying forever costs battery in the middle of a session.
+    static const MAX_RETRIES = 5;
+
     // BLE allows at most three registered profiles per app, and the registry
     // outlives a single AppBase instance in the VM (the unit-test harness
     // restarts the app between tests, which used to hit the limit and take
@@ -47,10 +51,12 @@ class FreelapBleDelegate extends Ble.BleDelegate {
     var packetCount = 0;
     var captureMode = false;
     var rememberedName = "";
-    var _retry = 0;
     var _retryTimer = null;
     var _handshake = [];
     var capture = new CaptureLog();   // rolling raw log for reverse-engineering
+    var assembler = new PacketAssembler();
+    var gaveUp = false;               // retries exhausted; only a rescan helps
+    var retries = 0;                  // consecutive failed attempts
 
     function initialize() {
         BleDelegate.initialize();
@@ -86,6 +92,22 @@ class FreelapBleDelegate extends Ble.BleDelegate {
         Ble.setScanState(Ble.SCAN_STATE_SCANNING);
     }
 
+    // The manual way back after the app has given up. Retrying forever would
+    // flatten the battery mid-session for a chip that is switched off.
+    function rescan() as Void {
+        retries = 0;
+        gaveUp = false;
+        assembler.reset();
+        startScan();
+    }
+
+    // How long to wait before attempt `attempt` (0-based). Exponential, so a
+    // chip that is briefly out of range is picked up in about a second while
+    // one that is genuinely gone is not hammered.
+    static function retryDelayMs(attempt as Lang.Number) as Lang.Number {
+        return 1000 << attempt;   // 1, 2, 4, 8, 16 s
+    }
+
     function stop() as Void {
         // The one flash write. Nothing is written while packets arrive: see
         // CaptureLog.
@@ -93,7 +115,7 @@ class FreelapBleDelegate extends Ble.BleDelegate {
         Ble.setScanState(Ble.SCAN_STATE_OFF);
         if (device != null) { Ble.unpairDevice(device); device = null; }
         notifyChar = null;
-        FreelapProtocol.reset();
+        assembler.reset();
         setState(BleState.IDLE);
     }
 
@@ -127,13 +149,16 @@ class FreelapBleDelegate extends Ble.BleDelegate {
     function onConnectedStateChanged(dev as Ble.Device, st as Ble.ConnectionState) as Void {
         if (st == Ble.CONNECTION_STATE_CONNECTED) {
             device = dev;
-            _retry = 0;
+            retries = 0;
+            gaveUp = false;
             setState(BleState.DISCOVERING);
             subscribe();
         } else {
-            // Dropped or failed. Clean up and try again.
+            // Dropped or failed. Throw away any half-received message: the
+            // tail of one from before the drop concatenated onto the head of
+            // one after it decodes to plausible, wrong crossings.
             notifyChar = null;
-            FreelapProtocol.reset();
+            assembler.reset();
             if (state != BleState.IDLE) { scheduleRetry(); }
         }
     }
@@ -167,7 +192,7 @@ class FreelapBleDelegate extends Ble.BleDelegate {
             capture.add(arrival, lastPacketHex);
             WatchUi.requestUpdate();
         }
-        var crossings = FreelapProtocol.feed(value, arrival);
+        var crossings = assembler.feed(value, arrival);
         if (crossings == null || engine == null) { return; }
         if (FreelapProtocol.STREAMING) {
             for (var i = 0; i < crossings.size(); i++) { engine.onCrossing(crossings[i], arrival); }
@@ -207,9 +232,14 @@ class FreelapBleDelegate extends Ble.BleDelegate {
     }
 
     function scheduleRetry() as Void {
-        if (_retry >= 5) { setState(BleState.IDLE); return; }
-        var delay = 1000 << _retry;    // 1,2,4,8,16 s
-        _retry++;
+        if (retries >= MAX_RETRIES) {
+            // Stop, and say so. The idle menu offers a rescan.
+            gaveUp = true;
+            setState(BleState.IDLE);
+            return;
+        }
+        var delay = retryDelayMs(retries);
+        retries++;
         if (_retryTimer == null) { _retryTimer = new Timer.Timer(); }
         _retryTimer.start(method(:onRetry), delay, false);
     }

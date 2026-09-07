@@ -130,6 +130,22 @@ module TestSupport {
         app.recorder = previous;
     }
 
+    // A complete burst message for `n` crossings, in the layout
+    // FreelapProtocol expects: 0xA5, count, chip id (u16 LE), then n records
+    // of u32 LE ticks plus a code byte. Mirrors tools/fake_chip.py.
+    function burstBytes(n as Lang.Number) as Lang.ByteArray {
+        var out = [0xA5, n, 0x34, 0x12]b;
+        for (var i = 0; i < n; i++) {
+            var ticks = i * 4000;
+            out.add(ticks & 0xFF);
+            out.add((ticks >> 8) & 0xFF);
+            out.add((ticks >> 16) & 0xFF);
+            out.add((ticks >> 24) & 0xFF);
+            out.add(i == 0 ? 1 : (i == n - 1 ? 3 : 2));
+        }
+        return out;
+    }
+
     // `bytes` bytes of plausible packet, as hex.
     function hexPacket(bytes as Lang.Number) as Lang.String {
         var out = "";
