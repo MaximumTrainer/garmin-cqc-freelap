@@ -24,6 +24,9 @@ class FreelapBleDelegate extends Ble.BleDelegate {
     // third start). Register once, and treat a refusal as a state the UI can
     // show rather than a crash.
     static var profileRegistered = false;
+    // How many times we actually called Ble.registerProfile in this VM. The
+    // guard above is only worth having if this stays at one.
+    static var profileRegistrations = 0;
 
     var state = BleState.IDLE;
     var profileError = false;
@@ -52,10 +55,14 @@ class FreelapBleDelegate extends Ble.BleDelegate {
     }
 
     function registerProfileOnce() as Void {
-        if (profileRegistered) { return; }
+        // Qualified on purpose: an unqualified write inside an instance method
+        // does not reach the class static, which would silently re-register on
+        // every app start.
+        if (FreelapBleDelegate.profileRegistered) { return; }
         try {
             Ble.registerProfile(FreelapProtocol.profile());
-            profileRegistered = true;
+            FreelapBleDelegate.profileRegistrations += 1;
+            FreelapBleDelegate.profileRegistered = true;
         } catch (e) {
             // Too Many Profiles, or a malformed profile dictionary. Either
             // way there is nothing to scan for; say so instead of dying.

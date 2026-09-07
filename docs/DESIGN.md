@@ -77,7 +77,34 @@ For a crossing *i* with chip cumulative time `T_i` (µs) and previous crossing t
 - `pace_s_per_km = 1000 / velocity_mps` (also shown as m:ss/km on the watch)
 - rep totals: `rep_time_us = T_finish − T_start`, `rep_distance_m = D_finish`, `rep_avg_velocity`, `rep_peak_velocity` (fastest split)
 
-If the chip reports more crossings than the course has transmitters (athlete ran through an extra Tx, or a course with mixed codes), the engine matches by code sequence first (START → LAP… → FINISH) and falls back to index order, flagging the rep as `unmatched` in a status field rather than guessing distances.
+If the chip reports more crossings than the course has transmitters (athlete ran through an extra Tx, or a course with mixed codes), the engine matches by code sequence first (START → LAP… → FINISH) and falls back to index order, flagging the rep as `unmatched` in a status field rather than guessing distances. The rep's distance is the last transmitter the course could actually place, so a trailing unmatched crossing cannot invent one.
+
+### 4.1 Course validation
+
+The course string is typed by hand into a settings field, so it is the most likely thing in the system to be wrong, and a wrong course is silent: every split it produces is over the wrong distance and still looks plausible in the FIT file. `Course` therefore validates **all-or-nothing** — a rejected spec yields *no* transmitters, never the prefix that happened to parse.
+
+Rejected, with the reason in `error`:
+
+| Spec | Reason |
+| --- | --- |
+| `""` | course is empty |
+| `S:0` | needs 2+ transmitters |
+| `S:0;X:30;F:100` | unknown code 'X' |
+| `S:0;L:thirty;F:100` | `'thirty'` is not a number |
+| `S:-10;F:30` | negative distance |
+| `S:0;L:60;F:30` | distances must increase |
+| `S:0;L:30;F:30` | distances must increase (equal is a zero-length split, and a divide by zero) |
+
+Accepted, with a note in `warning`:
+
+| Spec | Note |
+| --- | --- |
+| `S:0;garbage;F:100` | the unreadable segment is dropped, and counted in the warning |
+| `S:0;L:30;L:60` | `openEnded` — no FINISH, so reps end on the lap button |
+
+`Course.fromSpec()` is the seam the app uses. It always hands back a course that can record: the athlete's if it parsed, otherwise `DEFAULT_SPEC` (`S:0;F:30`) with `usingFallback` set and the rejection reason in `warning`. `loadActive()` is the same thing plus the settings read, so everything above is testable without Toybox.
+
+`problem()` is the one line the watch shows — `error` if there is one, else `warning`. `MainView` draws it under the course summary before recording starts (red when the athlete's own course was thrown away, amber for a caveat about the one in force), because the settings screen accepted the string and by the time a rep is running it is too late to find out.
 
 Optional: the watch's own GPS-derived distance is left untouched in the native fields, so Garmin Connect's total distance stays sane on a track. The Freelap distance is a developer field, not a replacement for Garmin's distance.
 
