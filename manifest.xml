@@ -1,7 +1,8 @@
 <?xml version="1.0"?>
-<!-- Generate a fresh application id with the SDK (or any UUID) before publishing. -->
+<!-- Regenerated for issue #30. If a build has already been sideloaded
+     anywhere, changing this again makes it a different app. -->
 <iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
-    <iq:application id="9f3a6c1e2b7d4e0fa1c5d8b2e6f4a7c9"
+    <iq:application id="d99bb18d11ed41bcb2f365b8cdfe0f6b"
                     type="watch-app"
                     name="@Strings.AppName"
                     entry="FreelapApp"
@@ -41,9 +42,14 @@
                  the other adds our developer fields to it. -->
             <iq:uses-permission id="Fit"/>
             <iq:uses-permission id="FitContributor"/>
-            <iq:uses-permission id="Positioning"/>
-            <iq:uses-permission id="Sensor"/>
-            <iq:uses-permission id="SensorHistory"/>
+            <!-- Positioning, Sensor and SensorHistory were declared here and
+                 never used: no source file references Toybox.Position or
+                 Toybox.Sensor. Removing them changes no behaviour - declaring
+                 Positioning does not record GPS, that needs
+                 Position.enableLocationEvents - but it stops the store listing
+                 asking for location from someone who then has to decide
+                 whether to trust the request. See docs/store/LISTING.md if you
+                 want a GPS track; it needs the permission *and* the code. -->
         </iq:permissions>
         <iq:languages>
             <iq:language>eng</iq:language>

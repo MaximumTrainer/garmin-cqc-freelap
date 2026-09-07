@@ -138,7 +138,7 @@ Accepted, with a note in `warning`:
 
 `problem()` is the one line the watch shows — `error` if there is one, else `warning`. `MainView` draws it under the course summary before recording starts (red when the athlete's own course was thrown away, amber for a caveat about the one in force), because the settings screen accepted the string and by the time a rep is running it is too late to find out.
 
-Optional: the watch's own GPS-derived distance is left untouched in the native fields, so Garmin Connect's total distance stays sane on a track. The Freelap distance is a developer field, not a replacement for Garmin's distance.
+The Freelap distance is a developer field, not a replacement for Garmin's own. **The app records no GPS**: it never calls `Position.enableLocationEvents`, so the native distance stays at zero and the activity has no map. On a track that is arguably right — the chip measures the distance that matters, and GPS over a 30 m rep is noise — but it surprises people, and it is a decision rather than an oversight. Turning it on needs the `Positioning` permission *and* the code; the permission alone does nothing, which is why it was removed in #30.
 
 ## 5. FIT layout
 
