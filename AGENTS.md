@@ -112,6 +112,25 @@ function testCourseSkipsMalformedSegments(logger as Test.Logger) as Boolean {
 Name them `test<Unit><BehaviourUnderCondition>`. One behaviour per test. Assert
 on values the FIT file or the screen actually carries, not on internals.
 
+**Helpers go in a module, not at file scope.** The runner collects *every*
+module-scope function annotated `(:test)` as a test case, so a helper written
+that way is called with a `Logger` as its first argument and reported as an
+ERROR. Put shared helpers inside a `(:test) module` — `source-test/fakes/TestSupport.mc`
+is the one that exists — where the annotation still strips them from release
+builds but the runner leaves them alone.
+
+**`hidden` is not accessible from a `static` method on the same class.**
+`Course.fromSpec()` calling `fallback.addWarning()` fails at runtime with
+*Could not find symbol* if `addWarning` is `hidden`. Likewise, assigning to a
+class `static` from an instance method needs the class name
+(`FreelapBleDelegate.profileRegistered = true`); unqualified, the write does
+not reach the static.
+
+**The simulator's BLE profile registry outlives an `AppBase` instance**, and
+the harness restarts the app once per test, so whether a given test's app
+instance got a profile depends on how many tests ran before it. Do not assert
+on that; assert on the contract instead (see `source-test/AppStartupTest.mc`).
+
 **Run** (needs the Connect IQ SDK on PATH and the simulator running; the SDK is
 not installed in CI and may not be installed on the current machine — check
 before promising a green run):

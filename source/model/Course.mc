@@ -1,4 +1,4 @@
-using Toybox.Application;
+using Toybox.Application.Properties;
 using Toybox.Lang;
 
 // Transmitter codes as they will be stored in the FIT file.
@@ -11,10 +11,33 @@ module TxCode {
 
 // A course is an ordered list of transmitters with cumulative distance (m).
 // Parsed from the settings string "S:0;L:30;L:60;F:100".
+//
+// Validation is deliberately all-or-nothing: a spec the athlete got wrong
+// yields *no* transmitters rather than the prefix that happened to parse.
+// Half a course is worse than none, because every split derived from it would
+// be over the wrong distance and would still look plausible in the FIT file.
+//
+//   valid == false   rejected. codes/distances are empty and `error` says why.
+//   warning != ""    parsed, but worth telling the athlete: a segment was
+//                    dropped, there is no FINISH, or this is the fallback.
+//   openEnded        parsed, but the last transmitter is not a FINISH.
+//
+// Nothing here touches Toybox beyond Lang, apart from loadActive(), so the
+// whole thing runs under `monkeydo /t` without settings or a radio.
 class Course {
-    var codes = [];      // Array<Number> of TxCode
-    var distances = [];  // Array<Float> cumulative metres
+    // The course used when the setting is empty or cannot be parsed.
+    static const DEFAULT_SPEC = "S:0;F:30";
+
+    var codes = [] as Lang.Array<Lang.Number>;      // TxCode per transmitter
+    var distances = [] as Lang.Array<Lang.Float>;   // cumulative metres
     var name = "";
+    var valid = false;
+    var error = "";
+    var warning = "";
+    var openEnded = false;
+    // True when this is DEFAULT_SPEC standing in for a spec that was rejected.
+    // The athlete needs to know the course on screen is not the one they typed.
+    var usingFallback = false;
 
     function initialize(spec as Lang.String, courseName as Lang.String) {
         name = courseName;
@@ -22,22 +45,80 @@ class Course {
     }
 
     function parse(spec as Lang.String) as Void {
-        codes = [];
-        distances = [];
+        codes = [] as Lang.Array<Lang.Number>;
+        distances = [] as Lang.Array<Lang.Float>;
+        valid = true;
+        error = "";
+        warning = "";
+        openEnded = false;
+
+        if (spec == null || spec.length() == 0) {
+            reject("course is empty");
+            return;
+        }
+
+        var dropped = 0;
         var parts = splitString(spec, ";");
         for (var i = 0; i < parts.size(); i++) {
-            var kv = splitString(parts[i], ":");
-            if (kv.size() != 2) { continue; }
-            var c = kv[0].toUpper();
-            var code = TxCode.UNKNOWN;
-            if (c.equals("S")) { code = TxCode.START; }
-            else if (c.equals("L")) { code = TxCode.LAP; }
-            else if (c.equals("F")) { code = TxCode.FINISH; }
+            var segment = parts[i];
+            if (segment.length() == 0) { continue; }
+
+            var kv = splitString(segment, ":");
+            if (kv.size() != 2) {
+                // Not "code:distance" at all. One fat-fingered separator should
+                // not throw away a course the athlete otherwise typed correctly,
+                // so drop the segment and say so.
+                dropped++;
+                continue;
+            }
+
+            var letter = kv[0].toUpper();
+            var code = codeFor(letter);
+            if (code == null) {
+                reject("unknown code '" + kv[0] + "'");
+                return;
+            }
+
             var d = kv[1].toFloat();
-            if (d == null) { continue; }
+            if (d == null) {
+                reject("'" + kv[1] + "' is not a number");
+                return;
+            }
+            if (d < 0) {
+                reject("negative distance " + kv[1]);
+                return;
+            }
+            if (distances.size() > 0 && d <= distances[distances.size() - 1]) {
+                // Equal distances give a zero-length split, and a divide by
+                // zero downstream; decreasing ones give a negative one.
+                reject("distances must increase");
+                return;
+            }
+
             codes.add(code);
             distances.add(d);
         }
+
+        if (codes.size() < 2) {
+            reject("needs 2+ transmitters");
+            return;
+        }
+
+        if (dropped > 0) {
+            addWarning(dropped.format("%d") + " segment(s) ignored");
+        }
+        if (codes[codes.size() - 1] != TxCode.FINISH) {
+            openEnded = true;
+            addWarning("no FINISH transmitter");
+        }
+    }
+
+    // The one line to put on the screen after a settings change: the reason
+    // the course was rejected, or the caveat about the one in force. Empty
+    // when there is nothing to say.
+    function problem() as Lang.String {
+        if (!error.equals("")) { return error; }
+        return warning;
     }
 
     function size() as Lang.Number { return codes.size(); }
@@ -60,9 +141,30 @@ class Course {
         return -1;
     }
 
+    // ---- internals --------------------------------------------------------
+
+    hidden function reject(why as Lang.String) as Void {
+        codes = [] as Lang.Array<Lang.Number>;
+        distances = [] as Lang.Array<Lang.Float>;
+        valid = false;
+        openEnded = false;
+        error = why;
+    }
+
+    function addWarning(text as Lang.String) as Void {
+        warning = warning.equals("") ? text : warning + "; " + text;
+    }
+
+    hidden static function codeFor(letter as Lang.String) as Lang.Number? {
+        if (letter.equals("S")) { return TxCode.START; }
+        if (letter.equals("L")) { return TxCode.LAP; }
+        if (letter.equals("F")) { return TxCode.FINISH; }
+        return null;
+    }
+
     // Monkey C has no String.split in 3.1; minimal implementation.
-    static function splitString(s as Lang.String, sep as Lang.String) as Lang.Array {
-        var out = [];
+    static function splitString(s as Lang.String, sep as Lang.String) as Lang.Array<Lang.String> {
+        var out = [] as Lang.Array<Lang.String>;
         var str = s;
         while (true) {
             var idx = str.find(sep);
@@ -73,12 +175,24 @@ class Course {
         return out;
     }
 
+    // The seam the app uses: always returns a course that can record, and
+    // carries the reason in `warning` when that course is the fallback rather
+    // than the one the athlete typed. Free of Toybox settings on purpose.
+    static function fromSpec(spec as Lang.String?, courseName as Lang.String) as Course {
+        var wanted = new Course(spec == null ? "" : spec, courseName);
+        if (wanted.valid) { return wanted; }
+
+        var fallback = new Course(DEFAULT_SPEC, courseName);
+        fallback.usingFallback = true;
+        // Only the reason goes in the warning: it is drawn on a watch face,
+        // and "the default is in force" is already visible as the distance.
+        fallback.addWarning(wanted.error);
+        return fallback;
+    }
+
     static function loadActive() as Course {
-        var app = Application.getApp();
-        var n = app.getProperty("activeCourse");
+        var n = Properties.getValue("activeCourse");
         if (n == null) { n = 1; }
-        var spec = app.getProperty("course" + n);
-        if (spec == null || spec.equals("")) { spec = "S:0;F:30"; }
-        return new Course(spec, "Course " + n);
+        return fromSpec(Properties.getValue("course" + n) as Lang.String?, "Course " + n);
     }
 }

@@ -118,16 +118,23 @@ class SplitEngine {
         r.splits = current.size();
         var last = current[current.size() - 1];
         r.timeUs = last.cumTimeUs;
-        r.distM = last.cumDistM;
-        r.avgVelMps = r.timeUs > 0 ? r.distM / (r.timeUs / 1000000.0) : 0.0;
+        // The rep's distance is the last transmitter the course could actually
+        // place. A trailing crossing the course does not know about (an extra
+        // lap, a stray transmitter) carries no distance of its own, and must
+        // not be allowed to invent one for the rep.
+        r.distM = 0.0;
         r.peakVelMps = 0.0;
         var unmatched = false;
         for (var i = 0; i < current.size(); i++) {
             if (current[i].velocityMps > r.peakVelMps) { r.peakVelMps = current[i].velocityMps; }
             if (current[i].txIndex < 0) { unmatched = true; }
+            else { r.distM = current[i].cumDistM; }
         }
+        r.avgVelMps = r.timeUs > 0 ? r.distM / (r.timeUs / 1000000.0) : 0.0;
+
+        var endsOnFinish = course.size() > 0 && course.codes[course.size() - 1] == TxCode.FINISH;
         if (unmatched) { r.status = RepStatus.UNMATCHED; }
-        else if (last.txCode != TxCode.FINISH && course.codes[course.size() - 1] == TxCode.FINISH) { r.status = RepStatus.PARTIAL; }
+        else if (endsOnFinish && last.txCode != TxCode.FINISH) { r.status = RepStatus.PARTIAL; }
         else if (current.size() < course.size()) { r.status = RepStatus.PARTIAL; }
 
         repsDone++;
