@@ -11,10 +11,12 @@ import asyncio
 import struct
 import sys
 
+# bless is only needed to actually advertise; the packet builders below are
+# imported by tools/tests/ on machines (and in CI) that have no BlueZ.
 try:
     from bless import BlessServer, GATTCharacteristicProperties, GATTAttributePermissions
 except ImportError:
-    sys.exit("pip install bless")
+    BlessServer = None
 
 SERVICE = "6E400001-B5A3-F393-E0A9-E50E24DCC9E6"
 NOTIFY = "6E400003-B5A3-F393-E0A9-E50E24DCC9E6"
@@ -37,6 +39,8 @@ def fragments(data, mtu=20):
 
 
 async def main():
+    if BlessServer is None:
+        sys.exit("pip install bless (and run on Linux with BlueZ)")
     server = BlessServer(name=NAME)
     await server.add_new_service(SERVICE)
     await server.add_new_characteristic(

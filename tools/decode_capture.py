@@ -33,6 +33,21 @@ def candidates(seconds):
                     yield uname, fname, struct.pack(fmt, v)
 
 
+def matches(data, seconds):
+    """Every (format, unit, offset) at which `seconds` is encoded in `data`.
+
+    Pure, so the candidate search is testable against a synthetic capture
+    whose answer is known by construction (see tools/tests/).
+    """
+    hits = []
+    for uname, fname, needle in candidates(seconds):
+        off = data.find(needle)
+        while off != -1:
+            hits.append((fname, uname, off))
+            off = data.find(needle, off + 1)
+    return hits
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -53,11 +68,8 @@ def main():
             frag = " FRAG?" if len(data) == 20 else ""
             print(f"{t:.3f} {delta:>9} h={handle} len={len(data):2d}{frag}  {data.hex(' ')}")
             for secs in times:
-                for uname, fname, needle in candidates(secs):
-                    off = data.find(needle)
-                    while off != -1:
-                        print(f"        {secs}s as {fname} {uname:>6} at offset {off}")
-                        off = data.find(needle, off + 1)
+                for fname, uname, off in matches(data, secs):
+                    print(f"        {secs}s as {fname} {uname:>6} at offset {off}")
 
 
 if __name__ == "__main__":

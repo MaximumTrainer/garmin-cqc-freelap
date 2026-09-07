@@ -1,3 +1,6 @@
 project.manifest = manifest.xml
-base.sourcePath = source
+
+# source-test is compiled in too; everything in it is annotated (:test) so the
+# compiler only includes it for builds made with --unit-test.
+base.sourcePath = source;source-test
 base.resourcePath = resources

@@ -1,6 +1,12 @@
 # The Connect IQ SDK requires a Garmin login to download, so CI cannot run
-# monkeyc yet. This job validates XML resources and the Python tooling and
-# is the hook for a monkeyc step once a self-hosted runner has the SDK.
+# monkeyc or monkeydo on a GitHub-hosted runner. Everything below is what can
+# be checked without the SDK; the Monkey C rings (see AGENTS.md) run on a
+# developer machine until a self-hosted runner with the SDK exists, at which
+# point add a second job here that runs:
+#
+#   monkeyc -f monkey.jungle -d fr265 -l 1 --unit-test -y "$KEY" -o bin/t.prg
+#   monkeydo bin/t.prg fr265 -t
+#
 name: lint
 on: [push, pull_request]
 jobs:
@@ -8,17 +14,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate XML resources
-        run: |
-          python3 - <<'PY'
-          import glob, xml.dom.minidom, sys
-          bad = 0
-          for f in glob.glob('**/*.xml', recursive=True) + ['manifest.xml']:
-              try: xml.dom.minidom.parse(f)
-              except Exception as e: print(f, e); bad += 1
-          sys.exit(bad)
-          PY
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest
+      - name: Validate manifest, resources and their references
+        run: python tools/validate_resources.py
       - name: Byte-compile tools
-        run: python3 -m py_compile tools/*.py
-      - name: Validate issue backlog
-        run: python3 -c "import json; json.load(open('.github/issues.json'))"
+        run: python -m py_compile tools/*.py
+      - name: Python tooling tests
+        run: python -m pytest tools/tests -q

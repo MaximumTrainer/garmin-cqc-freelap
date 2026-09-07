@@ -21,25 +21,54 @@ source/model/SplitEvent.mc          one crossing with derived metrics
 source/model/SplitEngine.mc         crossings → splits → reps
 source/fit/FitRecorder.mc           session + developer fields + laps
 source/ui/                          activity screen, buttons, save menu
+source-test/                        Monkey C unit tests (see AGENTS.md)
 tools/decode_capture.py             find timestamp fields in a BLE capture
 tools/fake_chip.py                  BLE peripheral that replays a rep
+tools/validate_resources.py         what CI can check without the Garmin SDK
+tools/tests/                        pytest suite for the above
 docs/DESIGN.md                      architecture, timing model, FIT layout
-docs/BACKLOG.md                     issue backlog (requirements + acceptance criteria)
 captures/                           BLE captures the protocol was derived from
 docs/REVERSE-ENGINEERING.md         sniffing plan
 ```
 
 ## Work tracking
 
-The plan is broken into GitHub issues grouped by milestone (M0 Foundations → M5 Beyond v0.1), each with a requirement and acceptance criteria. `docs/BACKLOG.md` mirrors them; `.github/issues.json` is the source and `tools/issues.py create` (re)creates them on GitHub.
+The plan is broken into [GitHub issues](https://github.com/MaximumTrainer/garmin-cqc-freelap/issues) grouped by milestone (M0 Foundations → M5 Beyond v0.1), each carrying a requirement and acceptance criteria. The issues are the single source of truth: the criteria on an issue are the test list for the PR that closes it (see `AGENTS.md`).
 
 ## Build
 
 1. Install the Connect IQ SDK (7.x or newer) and the VS Code Monkey C extension.
-2. Add a `resources/drawables/launcher_icon.png` (40×40 is fine) and generate a developer key.
+2. Generate a developer key (VS Code: *Monkey C: Generate a Developer Key*). `resources/drawables/launcher_icon.png` is a placeholder disc — replace it before release.
 3. Trim `manifest.xml` products to devices you own.
-4. `monkeyc -f monkey.jungle -d fr255 -o bin/freelap.prg -y developer_key.der` (or *Run* from VS Code). CI does not run `monkeyc` because the SDK needs a Garmin login; `.github/workflows/lint.yml` validates resources and tooling only.
+4. `monkeyc -f monkey.jungle -d fr265 -l 1 -o bin/freelap.prg -y developer_key.der` (or *Run* from VS Code).
 5. Sideload `bin/freelap.prg` to `GARMIN/APPS/` on the watch.
+
+CI does not run `monkeyc`: the SDK needs a Garmin login, so it cannot be
+installed on a GitHub-hosted runner. [`.github/workflows/lint.yml`](.github/workflows/lint.yml)
+validates the manifest, the resources and their cross-references, and runs the
+Python tooling tests; its header comment carries the exact `monkeyc`/`monkeydo`
+step to add once a self-hosted runner has the SDK. Run those two rings locally
+before you push — see **Test** below.
+
+```powershell
+python tools/validate_resources.py   # the same check CI runs
+python -m pytest tools/tests -q
+```
+
+## Test
+
+Unit tests live in `source-test/` and run in the simulator:
+
+```powershell
+connectiq                                   # start the simulator once
+monkeyc -f monkey.jungle -d fr265 -l 1 --unit-test -y developer_key.der -o bin/freelap-test.prg
+monkeydo bin/freelap-test.prg fr265 -t
+```
+
+Or *Monkey C: Run Tests* in VS Code. `source-test/CourseTest.mc` currently has
+four passing tests and one deliberately failing one (`testCourseRejectsNonMonotonicDistances`)
+marking the next piece of work. `AGENTS.md` describes the outside-in TDD loop
+this project follows.
 
 ## First run
 
