@@ -14,9 +14,7 @@ using Toybox.Test;
 
 (:test)
 function testRepWithAnExtraCrossingIsFlaggedUnmatched(logger as Test.Logger) as Lang.Boolean {
-    var course = new Course("S:0;L:30;F:100", "3tx");
-    var engine = new SplitEngine(course, null);
-    engine.onSessionStart();
+    var engine = TestSupport.engineFor("S:0;L:30;F:100");
 
     // Four crossings on a three-transmitter course.
     engine.onRepBurst(TestSupport.burst([0l, 4000000l, 8000000l, 12000000l],
@@ -31,9 +29,7 @@ function testRepWithAnExtraCrossingIsFlaggedUnmatched(logger as Test.Logger) as 
 
 (:test)
 function testRepEndedByTheManualLapButtonIsPartial(logger as Test.Logger) as Lang.Boolean {
-    var course = new Course("S:0;L:30;L:60;F:100", "4tx");
-    var engine = new SplitEngine(course, null);
-    engine.onSessionStart();
+    var engine = TestSupport.engineFor("S:0;L:30;L:60;F:100");
 
     // START and one LAP arrive, then the athlete presses the lap button.
     engine.onCrossing(new Crossing(0l, TxCode.START, "TEST"), 1000);
@@ -49,9 +45,7 @@ function testRepEndedByTheManualLapButtonIsPartial(logger as Test.Logger) as Lan
 
 (:test)
 function testPartialRepDistanceIgnoresTrailingUnmatchedCrossings(logger as Test.Logger) as Lang.Boolean {
-    var course = new Course("S:0;L:30;F:100", "3tx");
-    var engine = new SplitEngine(course, null);
-    engine.onSessionStart();
+    var engine = TestSupport.engineFor("S:0;L:30;F:100");
 
     // A fourth crossing the course cannot place must not drag the rep
     // distance to something invented.
@@ -65,9 +59,7 @@ function testPartialRepDistanceIgnoresTrailingUnmatchedCrossings(logger as Test.
 
 (:test)
 function testCompleteRepIsOk(logger as Test.Logger) as Lang.Boolean {
-    var course = new Course("S:0;L:30;F:100", "3tx");
-    var engine = new SplitEngine(course, null);
-    engine.onSessionStart();
+    var engine = TestSupport.engineFor("S:0;L:30;F:100");
 
     engine.onRepBurst(TestSupport.burst([0l, 4000000l, 8000000l],
                             [TxCode.START, TxCode.LAP, TxCode.FINISH]), 1000);
@@ -79,9 +71,7 @@ function testCompleteRepIsOk(logger as Test.Logger) as Lang.Boolean {
 
 (:test)
 function testRepOnAnOpenEndedCourseIsNotPartial(logger as Test.Logger) as Lang.Boolean {
-    var course = new Course("S:0;L:30;L:60", "open");
-    var engine = new SplitEngine(course, null);
-    engine.onSessionStart();
+    var engine = TestSupport.engineFor("S:0;L:30;L:60");
 
     engine.onRepBurst(TestSupport.burst([0l, 4000000l, 8000000l],
                             [TxCode.START, TxCode.LAP, TxCode.LAP]), 1000);
