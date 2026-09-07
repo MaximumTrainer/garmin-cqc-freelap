@@ -130,17 +130,40 @@ def write_all(root=ROOT):
     return written
 
 
+# How far a committed pixel may drift from a freshly rendered one before the
+# icon counts as stale. Not zero: PNG encoding and LANCZOS resampling are not
+# byte-identical across Pillow versions and platforms, so comparing file bytes
+# fails in CI for a file that is visually identical. Two levels out of 255 is
+# well below anything an eye or a hand edit would produce.
+PIXEL_TOLERANCE = 2
+
+
+def differs(path, size):
+    """True if the icon at `path` is not what draw_icon(size) produces."""
+    with Image.open(path) as committed:
+        if committed.size != (size, size) or committed.mode != "RGBA":
+            return True
+        on_disk = committed.tobytes()
+    fresh = draw_icon(size).tobytes()
+    if len(on_disk) != len(fresh):
+        return True
+    for i in range(len(fresh)):
+        if abs(on_disk[i] - fresh[i]) > PIXEL_TOLERANCE:
+            return True
+    return False
+
+
 def stale(root=ROOT):
-    """Icons on disk that do not match what this script would generate."""
+    """Icons on disk that do not match what this script would generate.
+
+    Compared as pixels rather than as file bytes; see PIXEL_TOLERANCE.
+    """
     out = []
     for size in SIZES:
-        path = os.path.join(root, target_path(size))
-        if not os.path.exists(path):
-            out.append(target_path(size))
-            continue
-        with open(path, "rb") as handle:
-            if handle.read() != png_bytes(size):
-                out.append(target_path(size))
+        rel = target_path(size)
+        path = os.path.join(root, rel)
+        if not os.path.exists(path) or differs(path, size):
+            out.append(rel)
     return out
 
 
