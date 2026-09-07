@@ -155,6 +155,29 @@ module TestSupport {
         return out;
     }
 
+    // ---- settings -----------------------------------------------------------
+
+    // Save and restore the course slots and what selects them, so a test can
+    // rewrite settings without leaking into the next one. Values come back
+    // typed because Properties.setValue will not take a nullable.
+    function saveCourseSlots() as Lang.Array {
+        var saved = [];
+        for (var i = 1; i <= Settings.MAX_COURSES; i++) {
+            saved.add(Settings.courseSpec(i));
+        }
+        saved.add(Settings.activeCourseIndex());
+        saved.add(Settings.quickDistanceM());
+        return saved;
+    }
+
+    function restoreCourseSlots(saved as Lang.Array) as Void {
+        for (var i = 1; i <= Settings.MAX_COURSES; i++) {
+            Properties.setValue("course" + i.format("%d"), saved[i - 1] as Lang.String);
+        }
+        Properties.setValue("activeCourse", saved[Settings.MAX_COURSES] as Lang.Number);
+        Properties.setValue("quickDistanceM", saved[Settings.MAX_COURSES + 1] as Lang.Number);
+    }
+
     // ---- MainView layout ---------------------------------------------------
 
     // An off-screen Dc the size of this device's display, so a view can be

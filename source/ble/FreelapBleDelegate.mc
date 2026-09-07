@@ -63,8 +63,7 @@ class FreelapBleDelegate extends Ble.BleDelegate {
 
     function initialize() {
         BleDelegate.initialize();
-        var cm = Properties.getValue("captureMode");
-        captureMode = (cm != null && cm);
+        captureMode = Settings.captureMode();
         var rn = Properties.getValue(CHIP_NAME_KEY);
         if (rn != null) { rememberedName = rn; }
         Ble.setDelegate(self);

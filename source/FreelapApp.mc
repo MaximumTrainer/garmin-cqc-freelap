@@ -41,10 +41,36 @@ class FreelapApp extends Application.AppBase {
         if (recorder != null && recorder.session != null) { recorder.save(); }
     }
 
+    // A sync from Garmin Connect lands here. Everything the athlete can change
+    // is re-read and applied now, so nothing needs the app relaunched.
+    //
+    // The course is the exception: changing it while a session is running would
+    // silently re-derive the distances of splits already written, so a
+    // mid-session change is refused and the athlete told why (issue #22).
     function onSettingsChanged() as Void {
-        course = Course.loadActive();
-        if (engine != null) { engine.course = course; }
+        applySettings();
+
+        if (recording()) {
+            setNotice(WatchUi.loadResource(Rez.Strings.CourseLocked));
+        } else {
+            course = Course.loadActive();
+            if (engine != null) { engine.course = course; }
+        }
         WatchUi.requestUpdate();
+    }
+
+    // Settings that are safe to change at any moment, session or not.
+    function applySettings() as Void {
+        if (engine != null) { engine.bleLatencyMs = Settings.bleLatencyMs(); }
+        if (recorder != null) {
+            recorder.clearAfterWrite = Settings.clearAfterWrite();
+            recorder.lapPerCrossing = Settings.lapPerCrossing();
+        }
+        if (ble != null) { ble.captureMode = Settings.captureMode(); }
+    }
+
+    function recording() as Lang.Boolean {
+        return recorder != null && recorder.session != null;
     }
 
     function setNotice(text as Lang.String) as Void {
