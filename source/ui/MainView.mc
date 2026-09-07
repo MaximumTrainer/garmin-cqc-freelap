@@ -83,7 +83,7 @@ class MainView extends WatchUi.View {
 
         var summary = course.name + "  " + course.totalDistance().format("%.0f") + "m";
         if (course.usingFallback) { summary += " (default)"; }
-        stackLine(dc, summary, DETAIL, Graphics.COLOR_LT_GRAY);
+        stackLine(dc, summary, DETAIL, Graphics.COLOR_WHITE);
 
         var problem = course.problem();
         if (!problem.equals("")) {
@@ -99,24 +99,33 @@ class MainView extends WatchUi.View {
         var lastRep = app.engine != null ? app.engine.lastRep : null;
 
         var big = "--";
+        var unit = "";
         var sub = "";
         if (lastEvent != null && lastEvent.splitTimeUs > 0) {
-            big = lastEvent.velocityMps.format("%.2f") + " m/s";
+            big = lastEvent.velocityMps.format("%.2f");
+            unit = "m/s";
             sub = lastEvent.formatSplit() + "s  " + lastEvent.splitDistM.format("%.0f") + "m  " +
                   formatPace(lastEvent.paceSecPerKm);
         }
 
         beginStack(h * 0.28);
-        stackLine(dc, big, BIG, Graphics.COLOR_WHITE);
+        stackValueWithUnit(dc, big, unit, BIG, Graphics.COLOR_WHITE);
         if (!sub.equals("")) {
-            stackLine(dc, sub, DETAIL, Graphics.COLOR_LT_GRAY);
+            // White, not grey: this is the line the athlete actually reads on a
+            // MIP panel in daylight with the backlight off.
+            stackLine(dc, sub, DETAIL, Graphics.COLOR_WHITE);
         }
 
         var repLine = WatchUi.loadResource(Rez.Strings.Rep) + " " + app.engine.repsDone;
+        var repColor = Graphics.COLOR_WHITE;
         if (lastRep != null) {
             repLine += "  " + (lastRep.timeUs / 1000000.0).format("%.2f") + "s";
+            // A rep the course could not account for produces a velocity of
+            // 0.00 m/s, which on its own looks like a measurement. Amber says
+            // the number is not to be trusted; fl_rep_status has the detail.
+            if (lastRep.status != RepStatus.OK) { repColor = Graphics.COLOR_YELLOW; }
         }
-        stackLine(dc, repLine, LINE, Graphics.COLOR_WHITE);
+        stackLine(dc, repLine, LINE, repColor);
 
         if (!rec.recording) {
             stackLine(dc, WatchUi.loadResource(Rez.Strings.Paused), DETAIL, Graphics.COLOR_YELLOW);
@@ -129,20 +138,30 @@ class MainView extends WatchUi.View {
     hidden function drawNotice(dc as Graphics.Dc, app, h as Lang.Number) as Void {
         var notice = app.activeNotice();
         if (notice.equals("")) { return; }
-        beginStack(h * 0.74);
+        beginStackBelow(h * 0.74);
         stackLine(dc, notice, DETAIL, Graphics.COLOR_YELLOW);
     }
 
     hidden function drawCaptureLine(dc as Graphics.Dc, ble, h as Lang.Number) as Void {
         if (ble == null || !ble.captureMode) { return; }
-        beginStack(h * 0.86);
-        stackLine(dc, "#" + ble.packetCount + " " + ble.lastPacketHex, SMALLEST, Graphics.COLOR_LT_GRAY);
+        beginStackBelow(h * 0.86);
+        stackLine(dc, "#" + ble.packetCount + " " + ble.lastPacketHex, SMALLEST, Graphics.COLOR_WHITE);
     }
 
     // ---- layout primitives ------------------------------------------------
 
     // Start a run of centred lines at `top`.
     hidden function beginStack(top as Lang.Numeric) as Void { _cursorY = top; }
+
+    // Start at `top`, or below whatever the previous block ended at if that is
+    // lower. Trailing blocks - a notice, the capture line - sit at a fraction
+    // of the display that is right on most screens and collides on the tall
+    // ones: on a 416px face the live block already reaches y=326, past the
+    // notice's 0.74h. The cursor knows where the last line actually ended, so
+    // ask it rather than guessing.
+    hidden function beginStackBelow(top as Lang.Numeric) as Void {
+        if (_cursorY < top) { _cursorY = top; }
+    }
 
     // Draw one centred line and advance past it. Because the cursor moves by
     // the font's measured height, two lines can never overlap however small
@@ -163,7 +182,63 @@ class MainView extends WatchUi.View {
                 :top => _cursorY,
                 :height => height,
                 :width => dc.getTextWidthInPixels(shown, font),
-                :usable => usable
+                :usable => usable,
+                :color => color,
+                :font => font,
+                :numericFont => false
+            });
+        }
+        _cursorY += height;
+    }
+
+    // The headline readout: a number in the largest font that fits, with its
+    // unit beside it in a text font, the pair centred as a group.
+    //
+    // The unit cannot share the number's font. Graphics.FONT_NUMBER_* contain
+    // digits and punctuation only, so "8.99 m/s" drawn in one renders the
+    // letters as tofu — and worse, getTextWidthInPixels measures the missing
+    // glyphs as zero, so the string looks narrow enough to fit and the fitting
+    // logic happily picks it. Only digits ever reach a numeric font now.
+    hidden function stackValueWithUnit(dc as Graphics.Dc, value as Lang.String,
+                                       unit as Lang.String, candidates as Lang.Array,
+                                       color) as Void {
+        if (unit.equals("")) {
+            stackLine(dc, value, candidates, color);
+            return;
+        }
+
+        var unitFont = Graphics.FONT_TINY;
+        var unitText = " " + unit;
+        var font = candidates[candidates.size() - 1];
+        for (var i = 0; i < candidates.size(); i++) {
+            var candidate = candidates[i];
+            var middle = _cursorY + dc.getFontHeight(candidate) / 2.0;
+            var combined = dc.getTextWidthInPixels(value, candidate) +
+                           dc.getTextWidthInPixels(unitText, unitFont);
+            if (combined <= usableWidth(dc, middle)) { font = candidate; break; }
+        }
+
+        var height = dc.getFontHeight(font);
+        var valueWidth = dc.getTextWidthInPixels(value, font);
+        var unitWidth = dc.getTextWidthInPixels(unitText, unitFont);
+        var left = (dc.getWidth() - (valueWidth + unitWidth)) / 2;
+
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        dc.drawText(left, _cursorY, font, value, Graphics.TEXT_JUSTIFY_LEFT);
+        // Sit the unit on the number's baseline rather than its top.
+        dc.drawText(left + valueWidth, _cursorY + height - dc.getFontHeight(unitFont),
+                    unitFont, unitText, Graphics.TEXT_JUSTIFY_LEFT);
+
+        if (trace != null) {
+            trace.add({
+                :text => value + unitText,
+                :top => _cursorY,
+                :height => height,
+                :width => valueWidth + unitWidth,
+                :usable => usableWidth(dc, _cursorY + height / 2.0),
+                :color => color,
+                :font => font,
+                :numericFont => true
             });
         }
         _cursorY += height;

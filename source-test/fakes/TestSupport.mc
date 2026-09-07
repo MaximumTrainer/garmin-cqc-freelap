@@ -169,6 +169,23 @@ module TestSupport {
         return view.trace;
     }
 
+    // Draw the idle screen with the BLE delegate forced into `state`, so the
+    // status line's colour can be asserted without a radio.
+    function traceMainViewWithBleState(state as Lang.Number) as Lang.Array {
+        var app = Application.getApp() as FreelapApp;
+        var ble = app.ble;
+        var previousState = ble.state;
+        var previousError = ble.profileError;
+
+        ble.state = state;
+        ble.profileError = false;
+        var trace = traceMainView(null, false);
+
+        ble.state = previousState;
+        ble.profileError = previousError;
+        return trace;
+    }
+
     // An engine that has already run the worked rep, so lastEvent and lastRep
     // are populated and the live screen has real numbers to draw.
     function engineWithARep() as SplitEngine {

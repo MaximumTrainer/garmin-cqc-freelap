@@ -242,7 +242,26 @@ Screens:
 
 1. **Connect** — scan progress, list of matching devices with RSSI, tap to pair. Remembers last chip.
 2. **Course** — pick a saved course (from settings) or "Quick": START + FINISH at a distance you dial in.
-3. **Activity** — big readouts: last split velocity / pace, rep time, rep count, chip connection dot. START/STOP button toggles session; LAP button forces an addLap (manual rep boundary if you run without a FINISH Tx). Long-press BACK → save/discard.
+3. **Activity** — the only screen that exists while a session runs. Wireframe, and what each line is:
+
+   ```
+        Chip OK            status, coloured: green subscribed,
+                           amber scanning/pairing, red none
+
+        8.99 m/s           last split velocity, 2 dp. The number is in a
+                           FONT_NUMBER_* face; the unit beside it is not.
+
+     4.45s  40m  1:51/km   that split's time (1/100 s), distance, and pace
+
+       Rep 1   11.93s      reps completed, and the last rep's time.
+                           Amber if that rep was not RepStatus.OK.
+
+         PAUSED            only while paused
+         No splits         a notice, for two seconds
+     #12 A50412340000...   only in capture mode
+   ```
+
+   Every line is white or a status colour — no mid greys, which vanish on a MIP panel with the backlight off. START/STOP toggles the session; BACK ends a rep manually (see §7.1); BACK while paused opens save/discard.
 4. **Rep summary** (auto after each FINISH, 5 s, dismissable) — split table for the rep.
 5. **Capture mode** (settings toggle) — shows raw hex of the last packet and a running count, for reverse-engineering on the field without a laptop.
 
@@ -255,6 +274,8 @@ Two rules, because between them they are every layout bug this screen has had.
 **The room a centred line has is the chord at its height, not the display width.** On a 416×416 round face, a line at `y = 0.08 h` has about 250 px, not 416. Getting this wrong is what made *Scanning for chip…* clip at both edges. `MainView.usableWidth(dc, y)` computes it; on a non-round face it returns 96% of the width.
 
 **Nothing hard-codes a font for a screen size.** Each line gives a preference list, largest first, and `pickFont` takes the first that fits the room at that height — so the velocity readout is `FONT_NUMBER_MEDIUM` on a 454 px face and steps down on a 208 px one without a per-device table to maintain. Lines are then stacked by *measured* font height rather than by fractions of the display, so two lines cannot overlap however small the display is, and `fitText` truncates with an ellipsis as a last resort.
+
+**Letters never go in a `FONT_NUMBER_*` face.** Those fonts contain digits and punctuation only. Drawing `"8.99 m/s"` in one renders the letters as tofu — and worse, `getTextWidthInPixels` measures the missing glyphs as *zero*, so the string looks narrow enough to fit and the fitting logic picks the font that cannot render it. It showed up as `8.99 □/□` on a 240×240 face while looking correct at 416×416. `stackValueWithUnit` draws the number and its unit in separate fonts, centred as a group, and a test asserts no traced line with letters in it ended up in a numeric font.
 
 This is deliberately runtime measurement rather than per-resolution resource overrides. The overrides would need a table per device family, would still be wrong for any device released after them, and cannot know how long a course error message is — the athlete types the course string.
 
