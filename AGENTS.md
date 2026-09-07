@@ -126,6 +126,21 @@ class `static` from an instance method needs the class name
 (`FreelapBleDelegate.profileRegistered = true`); unqualified, the write does
 not reach the static.
 
+**The test build no longer fits on API 3.x devices.** Monkey C caps the
+`globals` module at 253 members there, and every `(:test)` function is a
+global; the suite passed 253 at 222 tests. `monkeyc --unit-test -d fr645m`
+now fails with *Found 261 members in module 'globals'*.
+
+This does **not** affect the app: a release build for the same device is
+clean, because `(:test)` is stripped. Run the suite on an API 5.x simulator
+(`fr265`, `fr965`) and build — not test — for the older devices, which is what
+the per-product `monkeyc -l 1` sweep already does.
+
+If the suite ever needs to run on 3.x again, the way out is annotation groups:
+tag test functions `(:test :groupA)` / `(:test :groupB)` and build each with
+`base.excludeAnnotations` set to the other. That is friction on every new test,
+so it is not worth doing until something actually needs it.
+
 **The simulator's BLE profile registry outlives an `AppBase` instance**, and
 the harness restarts the app once per test, so whether a given test's app
 instance got a profile depends on how many tests ran before it. Do not assert
