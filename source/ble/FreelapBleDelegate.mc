@@ -1,4 +1,5 @@
 using Toybox.Application;
+using Toybox.Application.Properties;
 using Toybox.BluetoothLowEnergy as Ble;
 using Toybox.Lang;
 using Toybox.System;
@@ -8,6 +9,7 @@ using Toybox.WatchUi;
 // Where the rolling capture log is stored, and the adapter that lets
 // CaptureLog write to it without knowing about Toybox.
 const CAPTURE_KEY = "capture";
+const CHIP_NAME_KEY = "lastChipName";
 
 class StorageSink {
     function initialize() {}
@@ -57,13 +59,13 @@ class FreelapBleDelegate extends Ble.BleDelegate {
     var assembler = new PacketAssembler();
     var gaveUp = false;               // retries exhausted; only a rescan helps
     var retries = 0;                  // consecutive failed attempts
+    var candidates = [];              // ChipCandidate, every chip seen this scan
 
     function initialize() {
         BleDelegate.initialize();
-        var app = Application.getApp();
-        var cm = app.getProperty("captureMode");
+        var cm = Properties.getValue("captureMode");
         captureMode = (cm != null && cm);
-        var rn = app.getProperty("lastChipName");
+        var rn = Properties.getValue(CHIP_NAME_KEY);
         if (rn != null) { rememberedName = rn; }
         Ble.setDelegate(self);
         registerProfileOnce();
@@ -97,6 +99,7 @@ class FreelapBleDelegate extends Ble.BleDelegate {
     function rescan() as Void {
         retries = 0;
         gaveUp = false;
+        candidates = [];
         assembler.reset();
         startScan();
     }
@@ -128,22 +131,42 @@ class FreelapBleDelegate extends Ble.BleDelegate {
 
     function onScanResults(results as Ble.Iterator) as Void {
         if (state != BleState.SCANNING) { return; }
+
+        // Collect every match before deciding. Connecting to the first one to
+        // appear is how, at a group session, you end up recording a
+        // team-mate's splits into your own activity.
         // Ble.Iterator.next() is declared as Object?; the cast is what lets
         // -l 1 see a ScanResult here.
         for (var r = results.next() as Ble.ScanResult?; r != null; r = results.next() as Ble.ScanResult?) {
-            if (FreelapProtocol.matchesScanResult(r, rememberedName)) {
-                Ble.setScanState(Ble.SCAN_STATE_OFF);
-                setState(BleState.PAIRING);
-                var name = r.getDeviceName();
-                if (name != null) {
-                    rememberedName = name;
-                    Application.getApp().setProperty("lastChipName", name);
-                }
-                device = Ble.pairDevice(r);
-                if (device == null) { scheduleRetry(); }
-                return;
-            }
+            if (!FreelapProtocol.matchesScanResult(r, rememberedName)) { continue; }
+            var name = r.getDeviceName();
+            if (name == null) { name = "chip"; }
+            candidates = ChipChooser.merge(candidates, new ChipCandidate(name, r.getRssi(), r));
         }
+
+        var chosen = ChipChooser.choose(candidates, rememberedName);
+        if (chosen != null) { connectTo(chosen); }
+    }
+
+    function connectTo(candidate as ChipCandidate) as Void {
+        Ble.setScanState(Ble.SCAN_STATE_OFF);
+        setState(BleState.PAIRING);
+        rememberChip(candidate.name);
+        device = Ble.pairDevice(candidate.result);
+        if (device == null) { scheduleRetry(); }
+    }
+
+    // The chip identity. Connect IQ does not expose a BLE address to an app,
+    // so the advertised name is the most stable identifier available - see
+    // docs/DESIGN.md §6.
+    function rememberChip(name as Lang.String) as Void {
+        rememberedName = name;
+        Properties.setValue(CHIP_NAME_KEY, name);
+    }
+
+    function forgetChip() as Void {
+        rememberedName = "";
+        Properties.setValue(CHIP_NAME_KEY, "");
     }
 
     function onConnectedStateChanged(dev as Ble.Device, st as Ble.ConnectionState) as Void {

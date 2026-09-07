@@ -29,7 +29,8 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
     // Is there anything worth putting in a menu on the idle screen?
     static function hasIdleMenu(app) as Lang.Boolean {
         if (app.ble == null) { return false; }
-        return app.ble.captureMode || app.ble.gaveUp;
+        return app.ble.captureMode || app.ble.gaveUp || app.ble.candidates.size() > 1 ||
+               !app.ble.rememberedName.equals("");
     }
 
     function onSelect() as Lang.Boolean {
@@ -70,6 +71,11 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
             dumpCapture();
         } else if (action == :rescan) {
             if (app.ble != null) { app.ble.rescan(); }
+        } else if (action == :forgetChip) {
+            if (app.ble != null) {
+                app.ble.forgetChip();
+                app.setNotice(WatchUi.loadResource(Rez.Strings.ChipForgotten));
+            }
         }
         WatchUi.requestUpdate();
     }
@@ -85,11 +91,34 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
         WatchUi.pushView(menu, new SaveMenuDelegate(), WatchUi.SLIDE_UP);
     }
 
-    hidden function openIdleMenu() as Void {
+    // Every matching chip in range, strongest first, so the athlete can pick
+    // when the automatic choice is wrong.
+    hidden function openChooseChipMenu() as Void {
+        var app = Application.getApp();
+        if (app.ble == null) { return; }
+        var menu = new WatchUi.Menu2({ :title => WatchUi.loadResource(Rez.Strings.ChooseChip) });
+        var sorted = ChipChooser.sortByStrength(app.ble.candidates);
+        for (var i = 0; i < sorted.size(); i++) {
+            var candidate = sorted[i] as ChipCandidate;
+            menu.addItem(new WatchUi.MenuItem(candidate.name,
+                                              candidate.rssi.format("%d") + " dBm",
+                                              candidate.name, null));
+        }
+        WatchUi.pushView(menu, new ChooseChipDelegate(sorted), WatchUi.SLIDE_UP);
+    }
+
+    function openIdleMenu() as Void {
         var app = Application.getApp();
         var menu = new WatchUi.Menu2({ :title => "Freelap" });
         if (app.ble != null && app.ble.gaveUp) {
             menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.Rescan), null, :rescan, null));
+        }
+        if (app.ble != null && app.ble.candidates.size() > 1) {
+            menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.ChooseChip), null, :choose, null));
+        }
+        if (app.ble != null && !app.ble.rememberedName.equals("")) {
+            menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.ForgetChip),
+                                              app.ble.rememberedName, :forget, null));
         }
         if (app.ble != null && app.ble.captureMode) {
             menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.DumpCapture), null, :dump, null));
@@ -102,6 +131,8 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
     // tools/decode_capture.py reads, so a field capture can be pasted straight
     // into the decoder. Simulator only in practice: there is no console on a
     // watch, which is why the log is also written to storage on stop().
+    function openChooseChip() as Void { openChooseChipMenu(); }
+
     function dumpCapture() as Void {
         var app = Application.getApp();
         if (app.ble == null) { return; }
@@ -151,7 +182,37 @@ class IdleMenuDelegate extends WatchUi.Menu2InputDelegate {
             new MainDelegate().dumpCapture();
         } else if (id == :rescan) {
             new MainDelegate().perform(:rescan);
+        } else if (id == :forget) {
+            new MainDelegate().perform(:forgetChip);
+        } else if (id == :choose) {
+            new MainDelegate().openChooseChip();
+            return;   // the chooser replaces this menu
         }
+        WatchUi.popView(WatchUi.SLIDE_DOWN);
+    }
+}
+
+// Picking a chip by hand. The item id is the chip name, so the choice needs no
+// index bookkeeping between the menu and the candidate list.
+class ChooseChipDelegate extends WatchUi.Menu2InputDelegate {
+    hidden var _candidates;
+
+    function initialize(candidates as Lang.Array) {
+        Menu2InputDelegate.initialize();
+        _candidates = candidates;
+    }
+
+    function onSelect(item as WatchUi.MenuItem) as Void {
+        var app = Application.getApp();
+        var name = item.getId() as Lang.String;
+        for (var i = 0; i < _candidates.size(); i++) {
+            var candidate = _candidates[i] as ChipCandidate;
+            if (candidate.name.equals(name) && app.ble != null) {
+                app.ble.connectTo(candidate);
+                break;
+            }
+        }
+        WatchUi.popView(WatchUi.SLIDE_DOWN);
         WatchUi.popView(WatchUi.SLIDE_DOWN);
     }
 }
