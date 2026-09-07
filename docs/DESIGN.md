@@ -263,7 +263,13 @@ Screens:
 
    Every line is white or a status colour — no mid greys, which vanish on a MIP panel with the backlight off. START/STOP toggles the session; BACK ends a rep manually (see §7.1); BACK while paused opens save/discard.
 4. **Rep summary** (auto after each FINISH, 5 s, dismissable) — split table for the rep.
-5. **Capture mode** (settings toggle) — shows raw hex of the last packet and a running count, for reverse-engineering on the field without a laptop.
+5. **Capture mode** (settings toggle) — shows raw hex of the last packet and a running count, for reverse-engineering in the field without a laptop.
+
+   `CaptureLog` keeps a rolling window of the last 60 notifications with their `System.getTimer()` arrival stamps. Two bounds, not one: a packet count *and* a total character budget, because a chip that fragments hard sends many more and shorter packets than the count cap assumes, and the storage value would blow past an API 3.1 device's ~8 KB allowance while still under 60.
+
+   **Nothing writes to flash while packets arrive.** `Application.Storage` is flash; a write inside the BLE notification callback blocks long enough to lose the packets that follow, and a fragmented burst arrives milliseconds apart. `CaptureLog` never writes; `flush()` does, once, and the delegate calls it from `stop()`. `CaptureLog` takes the storage as an argument, so a test asserts the write count rather than a reviewer promising it.
+
+   With capture mode on, BACK from the idle screen opens a menu with **Dump capture** (and Exit, so BACK never traps you). Dump prints the log to the CIQ console in the tab-separated shape `tools/decode_capture.py` reads — arrival seconds, handle, hex — so a field capture pastes straight into the decoder. The handle column is a placeholder: the watch does not expose the ATT handle a notification arrived on. The console only exists in the simulator, which is why the log is also written to storage on `stop()`.
 
 Settings (Garmin Connect app → CIQ settings): courses (up to 8; each a list of `code,cumulative_m`), BLE latency estimate, clear-after-write, capture mode, sport/subsport (default Running / Track).
 

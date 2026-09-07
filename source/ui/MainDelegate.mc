@@ -58,29 +58,65 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
             }
         } else if (action == :saveMenu) {
             openSaveMenu();
+        } else if (action == :captureMenu) {
+            openCaptureMenu();
+        } else if (action == :dumpCapture) {
+            dumpCapture();
         }
         WatchUi.requestUpdate();
     }
 
     hidden function openSaveMenu() as Void {
+        var app = Application.getApp();
         var menu = new WatchUi.Menu2({ :title => "Freelap" });
         menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.Save), null, :save, null));
         menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.Discard), null, :discard, null));
+        if (app.ble != null && app.ble.captureMode) {
+            menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.DumpCapture), null, :dump, null));
+        }
         WatchUi.pushView(menu, new SaveMenuDelegate(), WatchUi.SLIDE_UP);
+    }
+
+    hidden function openCaptureMenu() as Void {
+        var menu = new WatchUi.Menu2({ :title => "Freelap" });
+        menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.DumpCapture), null, :dump, null));
+        menu.addItem(new WatchUi.MenuItem(WatchUi.loadResource(Rez.Strings.Exit), null, :exit, null));
+        WatchUi.pushView(menu, new CaptureMenuDelegate(), WatchUi.SLIDE_UP);
+    }
+
+    // Prints the rolling packet log to the CIQ console in the shape
+    // tools/decode_capture.py reads, so a field capture can be pasted straight
+    // into the decoder. Simulator only in practice: there is no console on a
+    // watch, which is why the log is also written to storage on stop().
+    function dumpCapture() as Void {
+        var app = Application.getApp();
+        if (app.ble == null) { return; }
+        var log = app.ble.capture;
+        System.println("--- freelap capture: " + log.size().format("%d") + " packet(s), " +
+                       log.dropped.format("%d") + " dropped of " + log.seen.format("%d") + " seen");
+        System.print(log.toTsv());
+        System.println("--- end");
+        app.setNotice(log.size().format("%d") + " packets dumped");
     }
 
     // What BACK means right now, as a plain function of the recorder's state.
     // Extracted so the decision is testable without a view stack: the rule
     // that an active session is never left without asking is the one thing
     // here that costs an athlete a session if it regresses.
-    static function backAction(rec) as Lang.Symbol {
-        if (rec == null || rec.session == null) { return :exit; }
+    static function backAction(rec, captureMode as Lang.Boolean) as Lang.Symbol {
+        if (rec == null || rec.session == null) {
+            // With capture mode on there is something to do here besides
+            // leaving: dump the packets that were just collected. Exit is the
+            // second item, so BACK never traps the athlete in a menu.
+            return captureMode ? :captureMenu : :exit;
+        }
         if (rec.recording) { return :manualLap; }
         return :saveMenu;
     }
 
     function onBack() as Lang.Boolean {
-        var action = backAction(Application.getApp().recorder);
+        var app = Application.getApp();
+        var action = backAction(app.recorder, app.ble != null && app.ble.captureMode);
         if (action == :exit) {
             return false;   // nothing to lose; leave the app
         }
@@ -91,11 +127,27 @@ class MainDelegate extends WatchUi.BehaviorDelegate {
     }
 }
 
+class CaptureMenuDelegate extends WatchUi.Menu2InputDelegate {
+    function initialize() { Menu2InputDelegate.initialize(); }
+
+    function onSelect(item as WatchUi.MenuItem) as Void {
+        if (item.getId() == :dump) {
+            new MainDelegate().dumpCapture();
+        }
+        WatchUi.popView(WatchUi.SLIDE_DOWN);
+    }
+}
+
 class SaveMenuDelegate extends WatchUi.Menu2InputDelegate {
     function initialize() { Menu2InputDelegate.initialize(); }
 
     function onSelect(item as WatchUi.MenuItem) as Void {
         var app = Application.getApp();
+        if (item.getId() == :dump) {
+            new MainDelegate().dumpCapture();
+            WatchUi.popView(WatchUi.SLIDE_DOWN);
+            return;
+        }
         if (item.getId() == :save) {
             app.recorder.save();
         } else {
