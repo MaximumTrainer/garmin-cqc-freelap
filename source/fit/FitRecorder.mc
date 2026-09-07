@@ -11,6 +11,10 @@ using Toybox.Timer;
 // silently drops them (known FitContributor gotcha).
 const SPLIT_LOG_KEY = "lastSessionSplits";
 
+// fl_chip_idx on a record with no split on it. 255 rather than 0, which is a
+// real chip slot.
+const UNKNOWN_CHIP_SLOT = 255;
+
 class FitRecorder {
     // A backstop, not a working limit. The queue drains at one record per
     // second and a rep is a handful of crossings, so a recording session never
@@ -22,6 +26,7 @@ class FitRecorder {
     // Record-level (per 1 Hz record)
     var fSplitUs;  var fCumUs;   var fDistM;   var fVel;   var fSpeed;
     var fPace;     var fTxIdx;   var fTxCode;  var fRep;   var fEstMs;
+    var fChipIdx;
     // Lap-level (one Garmin lap per Freelap rep)
     var lRepUs;    var lRepDist; var lAvgVel;  var lPeakVel; var lSplits; var lStatus;
     // Session-level
@@ -44,7 +49,6 @@ class FitRecorder {
     var _tick = null;
     var _wroteThisTick = false;
     var _log = new SplitLog();   // every split, for export; bounded
-    var _chipId = "";
     var _engine = null;
 
     // The primary constructor: the flags are passed in, so the recorder runs
@@ -104,6 +108,11 @@ class FitRecorder {
         fTxCode  = session.createField("fl_tx_code",  7, Fit.DATA_TYPE_UINT8,  R);
         fRep     = session.createField("fl_rep",      8, Fit.DATA_TYPE_UINT16, R);
         fEstMs   = session.createField("fl_est_ms",   9, Fit.DATA_TYPE_UINT32, { :mesgType => Fit.MESG_TYPE_RECORD, :units => "ms" });
+        // Which chip this split came from, as a slot into the session's
+        // fl_chip_id list. A uint8 rather than the id itself: a 16-byte string
+        // on every 1 Hz record would be ~115 KB of FIT file over two hours, to
+        // repeat the same handful of values.
+        fChipIdx = session.createField("fl_chip_idx", 10, Fit.DATA_TYPE_UINT8, R);
 
         lRepUs   = session.createField("fl_rep_time_us", 20, Fit.DATA_TYPE_UINT32, { :mesgType => Fit.MESG_TYPE_LAP, :units => "us" });
         lRepDist = session.createField("fl_rep_dist_m",  21, Fit.DATA_TYPE_FLOAT,  { :mesgType => Fit.MESG_TYPE_LAP, :units => "m" });
@@ -115,14 +124,15 @@ class FitRecorder {
         sReps    = session.createField("fl_reps",         40, Fit.DATA_TYPE_UINT16, { :mesgType => Fit.MESG_TYPE_SESSION });
         sBestUs  = session.createField("fl_best_rep_us",  41, Fit.DATA_TYPE_UINT32, { :mesgType => Fit.MESG_TYPE_SESSION, :units => "us" });
         sTotDist = session.createField("fl_total_dist_m", 42, Fit.DATA_TYPE_FLOAT,  { :mesgType => Fit.MESG_TYPE_SESSION, :units => "m" });
-        sChipId  = session.createField("fl_chip_id",      43, Fit.DATA_TYPE_STRING, { :mesgType => Fit.MESG_TYPE_SESSION, :count => 16 });
+        // Comma-separated, in slot order, so fl_chip_idx on a record resolves
+        // to a chip. One chip reads exactly as it did before.
+        sChipId  = session.createField("fl_chip_id",      43, Fit.DATA_TYPE_STRING, { :mesgType => Fit.MESG_TYPE_SESSION, :count => 64 });
     }
 
     // ---- SplitEngine listener --------------------------------------------
     function onSplit(ev as SplitEvent) as Void {
         enqueue(ev);
         _log.add(ev.toArray());
-        if (!ev.chipId.equals("")) { _chipId = ev.chipId; }
     }
 
     function onRepComplete(r as RepSummary) as Void {
@@ -236,6 +246,7 @@ class FitRecorder {
         fTxIdx.setData(ev.txIndex < 0 ? 255 : ev.txIndex);
         fTxCode.setData(ev.txCode);
         fRep.setData(ev.rep);
+        fChipIdx.setData(ev.chipSlot);
         fEstMs.setData(ev.estSessionMs);   // already clamped by the engine
     }
 
@@ -243,6 +254,7 @@ class FitRecorder {
         fSplitUs.setData(0); fCumUs.setData(0); fDistM.setData(0.0);
         fVel.setData(0.0); fSpeed.setData(0.0); fPace.setData(0.0);
         fTxIdx.setData(255); fTxCode.setData(0); fRep.setData(0); fEstMs.setData(0);
+        fChipIdx.setData(UNKNOWN_CHIP_SLOT);
     }
 
     // ---- manual lap (BACK/LAP button) -----------------------------------
@@ -284,7 +296,8 @@ class FitRecorder {
             sBestUs.setData(_engine.bestRepUs);
             sTotDist.setData(_engine.totalDistM);
         }
-        sChipId.setData(_chipId.equals("") ? "unknown" : _chipId);
+        var chips = _engine != null ? _engine.roster.idList() : "";
+        sChipId.setData(chips.equals("") ? "unknown" : chips);
         _log.flush(new StorageSink(), SPLIT_LOG_KEY);
         session.stop();
         session.save();

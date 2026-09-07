@@ -90,7 +90,7 @@ TDD loop this project follows.
 
 ## Where the data ends up
 
-In the `.FIT` file, as developer fields with a `field_description` each (field ids 0–9 on `record`, 20–25 on `lap`, 40–43 on `session`), and independently in `Application.Storage` as the last session's split log.
+In the `.FIT` file, as developer fields with a `field_description` each (field ids 0–10 on `record`, 20–25 on `lap`, 40–43 on `session`), and independently in `Application.Storage` as the last session's split log.
 
 ```bash
 python tools/fit_splits.py activity.fit > splits.csv    # from the FIT file

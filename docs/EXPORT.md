@@ -46,9 +46,10 @@ Only the last session is kept, and only up to 300 splits (`SplitLog.MAX_ROWS`) �
 | `speed_kmh` | `fl_speed` | `velocity × 3.6` |
 | `pace_s_per_km` | `fl_pace` | `1000 / velocity` |
 | `est_ms` | `fl_est_ms` | **estimated** ms into the session — see below |
+| — | `fl_chip_idx` | which chip, as a slot into the session's `fl_chip_id` list. `255` on a record with no split |
 | `est_clamped` | *(watch log only)* | the estimate could not be placed |
 
-Lap rows carry `rep_time_us`, `rep_dist_m`, `rep_avg_vel_mps`, `rep_peak_vel_mps`, `rep_splits` and `rep_status` (`ok` / `unmatched` / `partial`). The session row carries `reps`, `best_rep_us`, `total_dist_m` and `chip_id`.
+Lap rows carry `rep_time_us`, `rep_dist_m`, `rep_avg_vel_mps`, `rep_peak_vel_mps`, `rep_splits` and `rep_status` (`ok` / `unmatched` / `partial`). The session row carries `reps`, `best_rep_us`, `total_dist_m` and `chip_id` — the last being every chip heard from, comma separated in slot order, so `fl_chip_idx` on a record resolves to one of them. A single-athlete session has one id and no separator.
 
 **`est_ms` is a guess, and the only one here.** Everything else is measured by the chip or defined by your course. It places a crossing on the session's timeline by working back from when the BLE packet arrived, minus the assumed `bleLatencyMs`; the durations are exact but *where they sit* is ±100–300 ms. Use `split_us` for performance and `est_ms` only for lining splits up against other timeline data. On the watch log, `est_clamped = true` means even that failed — the crossing happened before the session started, so the `0` is not a time.
 

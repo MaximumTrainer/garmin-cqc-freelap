@@ -11,6 +11,8 @@ module RepStatus {
 // A completed rep (START..FINISH) with totals.
 class RepSummary {
     var rep = 0;
+    var chipId = "";
+    var chipSlot = 0;
     var timeUs = 0;
     var distM = 0.0;
     var avgVelMps = 0.0;
@@ -28,8 +30,9 @@ class SplitEngine {
     static const DEFAULT_LATENCY_MS = 150;
 
     var course;
-    var repNumber = 0;
-    var current = [];            // SplitEvents of the rep in progress
+    var repNumber = 0;           // the most recently *started* rep, any chip
+    var current = [];            // SplitEvents of the rep in progress (last chip heard)
+    var roster = new ChipRoster();
     var listener;                // object with onSplit(ev) and onRepComplete(rep)
     // An optional second listener for the UI. Always notified *after* the
     // recorder: the FIT file matters more than the screen, so nothing the
@@ -41,7 +44,6 @@ class SplitEngine {
     var bestRepUs = 0;
     var totalDistM = 0.0;
     var repsDone = 0;
-    var repStartChipUs = 0l;     // chip time (Long) of the START crossing (streaming mode)
     var lastEvent = null;        // for the UI
     var lastRep = null;
     var clampedEstimates = 0;    // crossings that could not be placed on the timeline
@@ -72,6 +74,7 @@ class SplitEngine {
         sessionStartTimerMs = timerMs;
         repNumber = 0; current = []; bestRepUs = 0; totalDistM = 0.0; repsDone = 0;
         clampedEstimates = 0;
+        roster.clear();
     }
 
     // Place a crossing on the session timeline, or admit that we cannot.
@@ -96,8 +99,16 @@ class SplitEngine {
     // arrivalTimerMs = System.getTimer() when the packet arrived.
     function onRepBurst(crossings as Lang.Array, arrivalTimerMs as Lang.Number) as Void {
         if (crossings.size() == 0) { return; }
-        repNumber++;
-        current = [];
+
+        // Rep numbering is per chip: with a Relay Coach, two athletes running
+        // alternately would otherwise be numbered 1, 2, 3, 4 between them and
+        // every rep attributed to whoever crossed next.
+        var chip = roster.forChip(crossings[0].chipId);
+        if (chip == null) { return; }   // roster full; see ChipRoster.MAX_CHIPS
+        chip.repNumber++;
+        chip.current = [];
+        repNumber = chip.repNumber;
+        current = chip.current;
         var t0 = crossings[0].timeUs;
         var tLast = crossings[crossings.size() - 1].timeUs;
         var repTimeUs = (tLast - t0).toNumber();   // Long -> Number once relative
@@ -108,9 +119,10 @@ class SplitEngine {
         for (var i = 0; i < crossings.size(); i++) {
             var cr = crossings[i];
             var ev = new SplitEvent();
-            ev.rep = repNumber;
+            ev.rep = chip.repNumber;
             ev.txCode = cr.code;
             ev.chipId = cr.chipId;
+            ev.chipSlot = chip.slot;
             ev.txIndex = course.matchCrossing(i, cr.code);
             ev.cumTimeUs = (cr.timeUs - t0).toNumber();
             ev.cumDistM = ev.txIndex >= 0 ? course.distances[ev.txIndex] : (prev != null ? prev.cumDistM : 0.0);
@@ -120,46 +132,60 @@ class SplitEngine {
             // durations rather than an even spread.
             placeEstimate(ev, finishEstMs - ((repTimeUs - ev.cumTimeUs) / 1000));
             ev.derive(prev);
-            current.add(ev);
+            chip.current.add(ev);
             prev = ev;
             lastEvent = ev;
             if (listener != null) { listener.onSplit(ev); }
         }
-        finishRep();
+        current = chip.current;
+        finishRep(chip);
     }
 
     // Streaming variant: one crossing at a time (if the chip notifies per
     // crossing). A START code, or a FINISH, delimits reps.
     function onCrossing(cr, arrivalTimerMs as Lang.Number) as Void {
-        if (cr.code == TxCode.START || current.size() == 0) {
-            if (current.size() > 0) { finishRep(); }
-            repNumber++;
-            current = [];
-            repStartChipUs = cr.timeUs;
+        var chip = roster.forChip(cr.chipId);
+        if (chip == null) { return; }
+
+        if (cr.code == TxCode.START || chip.current.size() == 0) {
+            if (chip.current.size() > 0) { finishRep(chip); }
+            chip.repNumber++;
+            chip.current = [];
+            chip.repStartChipUs = cr.timeUs;
         }
-        var prev = current.size() > 0 ? current[current.size() - 1] : null;
+        repNumber = chip.repNumber;
+
+        var prev = chip.current.size() > 0 ? chip.current[chip.current.size() - 1] : null;
         var ev = new SplitEvent();
-        ev.rep = repNumber;
+        ev.rep = chip.repNumber;
         ev.txCode = cr.code;
         ev.chipId = cr.chipId;
-        ev.txIndex = course.matchCrossing(current.size(), cr.code);
-        ev.cumTimeUs = (cr.timeUs - repStartChipUs).toNumber();
+        ev.chipSlot = chip.slot;
+        ev.txIndex = course.matchCrossing(chip.current.size(), cr.code);
+        ev.cumTimeUs = (cr.timeUs - chip.repStartChipUs).toNumber();
         ev.cumDistM = ev.txIndex >= 0 ? course.distances[ev.txIndex] : (prev != null ? prev.cumDistM : 0.0);
         ev.arrivalTimerMs = arrivalTimerMs;
         placeEstimate(ev, (arrivalTimerMs - bleLatencyMs) - sessionStartTimerMs);
         ev.derive(prev);
-        current.add(ev);
+        chip.current.add(ev);
+        current = chip.current;
         lastEvent = ev;
         if (listener != null) { listener.onSplit(ev); }
-        if (cr.code == TxCode.FINISH) { finishRep(); }
+        if (cr.code == TxCode.FINISH) { finishRep(chip); }
     }
 
     // Returns true when a rep was actually closed, so the caller can tell the
     // athlete that the button did nothing rather than leaving them pressing it.
-    function finishRep() as Lang.Boolean {
+    // Close the rep in progress for `chip`. With one chip this is the only rep
+    // there is; with several, each has its own.
+    function finishRep(chip as ChipState?) as Lang.Boolean {
+        if (chip == null) { return false; }
+        var current = chip.current;
         if (current.size() == 0) { return false; }
         var r = new RepSummary();
-        r.rep = repNumber;
+        r.rep = chip.repNumber;
+        r.chipId = chip.id;
+        r.chipSlot = chip.slot;
         r.events = current;
         r.splits = current.size();
         var last = current[current.size() - 1];
@@ -186,13 +212,23 @@ class SplitEngine {
         repsDone++;
         totalDistM += r.distM;
         if (r.status == RepStatus.OK && (bestRepUs == 0 || r.timeUs < bestRepUs)) { bestRepUs = r.timeUs; }
-        current = [];
+        chip.current = [];
+        current = chip.current;
         lastRep = r;
         if (listener != null) { listener.onRepComplete(r); }
         if (observer != null) { observer.onRepComplete(r); }
         return true;
     }
 
-    // Manual lap button: close the rep with what we have.
-    function forceRepEnd() as Lang.Boolean { return finishRep(); }
+    // Manual lap button: close whichever rep is in progress. With several
+    // chips this is the one the last crossing belonged to - the athlete
+    // pressing the button is the one who just ran.
+    function forceRepEnd() as Lang.Boolean {
+        return finishRep(chipOfLastCrossing());
+    }
+
+    hidden function chipOfLastCrossing() as ChipState? {
+        if (lastEvent == null) { return roster.at(0); }
+        return roster.at(lastEvent.chipSlot);
+    }
 }

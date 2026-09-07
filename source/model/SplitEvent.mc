@@ -6,7 +6,8 @@ class SplitEvent {
     var rep = 0;             // 1-based rep number
     var txIndex = -1;        // index into Course (0 = START), -1 unmatched
     var txCode = 0;          // TxCode
-    var chipId = "";         // chip identifier, for multi-athlete extension
+    var chipId = "";         // chip identifier
+    var chipSlot = 0;        // its slot in the session's ChipRoster
 
     var cumTimeUs = 0;       // chip time since START of this rep (us)
     var splitTimeUs = 0;     // since previous crossing (us); 0 for START

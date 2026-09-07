@@ -114,6 +114,9 @@ class RepSummaryView extends WatchUi.View {
         if (trace != null) { trace = []; }
 
         var title = WatchUi.loadResource(Rez.Strings.Rep) + " " + rep.rep.format("%d");
+        if (!rep.chipId.equals("") && !rep.chipId.equals("TEST")) {
+            title = rep.chipId + "  " + title;
+        }
         drawRow(dc, h * 0.10, [Graphics.FONT_TINY, Graphics.FONT_XTINY], title,
                 rep.status == RepStatus.OK ? Graphics.COLOR_WHITE : Graphics.COLOR_YELLOW);
 

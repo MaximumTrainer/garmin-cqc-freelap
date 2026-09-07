@@ -161,6 +161,18 @@ module TestSupport {
         return recorderOn(new QuietSession(), spec);
     }
 
+    // The worked rep, but from a named chip - for the multi-athlete tests,
+    // where whose rep it was is the whole point.
+    function burstFrom(chipId as Lang.String) as Lang.Array {
+        var times = [0l, 4120000l, 7480000l, 11930000l];
+        var codes = [TxCode.START, TxCode.LAP, TxCode.LAP, TxCode.FINISH];
+        var out = [];
+        for (var i = 0; i < times.size(); i++) {
+            out.add(new Crossing(times[i], codes[i], chipId));
+        }
+        return out;
+    }
+
     // A rep of `n` evenly spaced crossings: START, LAPs, FINISH.
     function repOf(n as Lang.Number) as Lang.Array {
         var times = [];
