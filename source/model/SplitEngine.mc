@@ -40,6 +40,7 @@ class SplitEngine {
     var repStartChipUs = 0l;     // chip time (Long) of the START crossing (streaming mode)
     var lastEvent = null;        // for the UI
     var lastRep = null;
+    var clampedEstimates = 0;    // crossings that could not be placed on the timeline
 
     // The primary constructor: everything the engine needs is passed in, so
     // the whole class runs under `monkeydo /t` with no settings and no radio
@@ -57,8 +58,34 @@ class SplitEngine {
     }
 
     function onSessionStart() as Void {
-        sessionStartTimerMs = System.getTimer();
+        onSessionStartAt(System.getTimer());
+    }
+
+    // The testable form. System.getTimer() is the one clock this class reads,
+    // and reading it makes every estimate below untestable, so the app layer
+    // passes it in and onSessionStart() is the convenience that fetches it
+    // (AGENTS.md, "Inject, don't fetch").
+    function onSessionStartAt(timerMs as Lang.Number) as Void {
+        sessionStartTimerMs = timerMs;
         repNumber = 0; current = []; bestRepUs = 0; totalDistM = 0.0; repsDone = 0;
+        clampedEstimates = 0;
+    }
+
+    // Place a crossing on the session timeline, or admit that we cannot.
+    //
+    // A negative offset is not a time. It happens for real: the chip buffers,
+    // so starting the watch part-way through a rep gives crossings that
+    // genuinely predate the session. Clamping to 0 keeps fl_est_ms a valid
+    // uint32; the flag is what stops that 0 being read as a measurement.
+    hidden function placeEstimate(ev as SplitEvent, estMs as Lang.Number) as Void {
+        if (estMs < 0) {
+            ev.estSessionMs = 0;
+            ev.estClamped = true;
+            clampedEstimates++;
+        } else {
+            ev.estSessionMs = estMs;
+            ev.estClamped = false;
+        }
     }
 
     // A burst of crossings for one rep, delivered together (the FxChip BLE
@@ -85,7 +112,10 @@ class SplitEngine {
             ev.cumTimeUs = (cr.timeUs - t0).toNumber();
             ev.cumDistM = ev.txIndex >= 0 ? course.distances[ev.txIndex] : (prev != null ? prev.cumDistM : 0.0);
             ev.arrivalTimerMs = arrivalTimerMs;
-            ev.estSessionMs = finishEstMs - ((repTimeUs - ev.cumTimeUs) / 1000);
+            // Work back from the FINISH: every earlier crossing sits its own
+            // split before it, so the gaps between estimates are the chip's
+            // durations rather than an even spread.
+            placeEstimate(ev, finishEstMs - ((repTimeUs - ev.cumTimeUs) / 1000));
             ev.derive(prev);
             current.add(ev);
             prev = ev;
@@ -113,7 +143,7 @@ class SplitEngine {
         ev.cumTimeUs = (cr.timeUs - repStartChipUs).toNumber();
         ev.cumDistM = ev.txIndex >= 0 ? course.distances[ev.txIndex] : (prev != null ? prev.cumDistM : 0.0);
         ev.arrivalTimerMs = arrivalTimerMs;
-        ev.estSessionMs = (arrivalTimerMs - bleLatencyMs) - sessionStartTimerMs;
+        placeEstimate(ev, (arrivalTimerMs - bleLatencyMs) - sessionStartTimerMs);
         ev.derive(prev);
         current.add(ev);
         lastEvent = ev;

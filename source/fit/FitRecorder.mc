@@ -215,7 +215,7 @@ class FitRecorder {
         fTxIdx.setData(ev.txIndex < 0 ? 255 : ev.txIndex);
         fTxCode.setData(ev.txCode);
         fRep.setData(ev.rep);
-        fEstMs.setData(ev.estSessionMs < 0 ? 0 : ev.estSessionMs);
+        fEstMs.setData(ev.estSessionMs);   // already clamped by the engine
     }
 
     function clearRecord() as Void {

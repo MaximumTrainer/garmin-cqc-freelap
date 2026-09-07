@@ -18,6 +18,7 @@ class SplitEvent {
     var paceSecPerKm = 0.0;  // split pace s/km
 
     var estSessionMs = 0;    // estimated crossing time, ms since session start
+    var estClamped = false;  // the estimate landed before the session started
     var arrivalTimerMs = 0;  // System.getTimer() when the packet carrying it arrived
 
     function initialize() {}
@@ -40,8 +41,14 @@ class SplitEvent {
     }
 
     // Compact array for Application.Storage.
+    //
+    // estClamped travels with the row because fl_est_ms is a uint32 and 0 is a
+    // legitimate value: without the flag, "the crossing happened at the moment
+    // the session started" and "we could not place this crossing" are the same
+    // number.
     function toArray() as Lang.Array {
-        return [rep, txIndex, txCode, cumTimeUs, splitTimeUs, cumDistM, splitDistM, velocityMps, estSessionMs];
+        return [rep, txIndex, txCode, cumTimeUs, splitTimeUs, cumDistM, splitDistM,
+                velocityMps, estSessionMs, estClamped];
     }
 
     function formatSplit() as Lang.String {

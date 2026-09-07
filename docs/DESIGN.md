@@ -50,7 +50,22 @@ There are three clocks:
 Design decisions:
 
 - **Durations are stored as uint32 microseconds exactly as received, never rounded.** `split_time_us` and `rep_time_us` are the primary fields. A uint32 in µs wraps at 71.6 minutes; a single split or a single rep will never approach that. Cumulative session time is stored in ms as a separate field to avoid the wrap.
-- **Absolute timestamps are estimated, not measured.** When the FINISH packet arrives at `t_arrive` (watch monotonic ms), the FINISH crossing is assumed to have happened at `t_arrive − L`, where `L` is a configurable BLE latency estimate (default 150 ms; measure it during reverse-engineering by starting the chip and the watch stopwatch together). Every earlier crossing in the same rep is placed at `t_finish − (rep_time − cumulative_time_at_crossing)`. These estimated wall-clock times are written as a separate `crossing_time_est_ms` field (ms since session start) so they are clearly labelled as estimates. Anyone analysing the file uses the chip's µs durations for performance and the estimate only for placing the splits on the timeline.
+- **Absolute timestamps are estimated, not measured.** When the FINISH packet arrives at `t_arrive` (watch monotonic ms), the FINISH crossing is assumed to have happened at `t_arrive − L`, where `L` is the configurable `bleLatencyMs` setting (default 150 ms). Every earlier crossing in the same rep is placed at `t_finish − (rep_time − cumulative_time_at_crossing)`, so the gaps between estimates are the chip's own splits rather than an even spread. These go in `fl_est_ms` (ms since session start), named `_est_` so nobody mistakes them for measurements. Anyone analysing the file uses the chip's µs durations for performance and the estimate only for placing splits on the timeline.
+
+  Worked, with the numbers `source-test/LatencyModelTest.mc` pins — session start at t=10 000 ms, burst at t=30 000, L=150, rep 0 / 4.120 / 7.480 / 11.930 s:
+
+  | crossing | `fl_est_ms` | derivation |
+  | --- | --- | --- |
+  | FINISH | 19 850 | (30 000 − 150) − 10 000 |
+  | LAP 2 | 15 400 | 19 850 − (11.930 − 7.480)×1000 |
+  | LAP 1 | 12 040 | 19 850 − (11.930 − 4.120)×1000 |
+  | START | 7 920 | 19 850 − 11.930×1000 |
+
+  Changing `bleLatencyMs` shifts every estimate in a rep by exactly the delta; it never changes a duration.
+
+- **An estimate that lands before the session started is clamped to 0 and flagged.** This is not defensive coding for an impossible case: the chip *buffers*, so starting the watch part-way through a rep gives crossings that genuinely predate the session. A negative offset is not a time, and `fl_est_ms` is a uint32. The clamp keeps the field valid; `SplitEvent.estClamped` (and `SplitEngine.clampedEstimates`) is what stops the resulting `0` being read as "this crossing happened exactly at session start". The flag travels in the stored split log because no FIT field carries it — adding a 21st developer field for a diagnostic was not worth it.
+
+  **`L` has not been measured.** 150 ms is a placeholder until someone runs the ten timed trials against a phone stopwatch with a real chip (issue #15's third criterion). When that happens the measured value belongs here, replacing this paragraph.
 - **Garmin laps are aligned to reps, not to individual splits.** `addLap()` can only be called "now"; CIQ cannot back-date a lap. Since the chip delivers a rep's splits in one burst at FINISH, the app calls `addLap()` once on FINISH, so each Garmin lap = one Freelap rep, with the rep's totals in lap-level developer fields. Individual splits are written as a burst of record-level developer fields (one split per 1 Hz record, see §5) plus kept in app storage for export.
 
 If Freelap's chip turns out to also notify on START and each LAP crossing in real time (possible on newer firmware; the sniffing plan will tell you), the engine already supports "streaming" mode: each crossing is written the moment it arrives and `addLap()` can optionally fire on every crossing.
