@@ -1,5 +1,6 @@
 using Toybox.ActivityRecording;
 using Toybox.Application;
+using Toybox.Application.Properties;
 using Toybox.FitContributor as Fit;
 using Toybox.Lang;
 using Toybox.Timer;
@@ -31,27 +32,50 @@ class FitRecorder {
     var _chipId = "";
     var _engine = null;
 
-    function initialize() {
-        var app = Application.getApp();
-        var c = app.getProperty("clearAfterWrite");
-        if (c != null) { clearAfterWrite = c; }
-        var l = app.getProperty("lapPerCrossing");
-        if (l != null) { lapPerCrossing = l; }
+    // The primary constructor: the flags are passed in, so the recorder runs
+    // under `monkeydo /t` with no settings (AGENTS.md, "Inject, don't fetch").
+    function initialize(clearFieldsAfterWrite as Lang.Boolean, lapOnEveryCrossing as Lang.Boolean) {
+        clearAfterWrite = clearFieldsAfterWrite;
+        lapPerCrossing = lapOnEveryCrossing;
+    }
+
+    // The convenience entry point the app layer uses.
+    static function fromSettings() as FitRecorder {
+        var c = Properties.getValue("clearAfterWrite");
+        var l = Properties.getValue("lapPerCrossing");
+        return new FitRecorder(c == null ? true : c, l == null ? false : l);
     }
 
     function start(engine as SplitEngine) as Void {
-        _engine = engine;
-        session = ActivityRecording.createSession({
+        startWith(ActivityRecording.createSession({
             :name => "Freelap",
             :sport => ActivityRecording.SPORT_RUNNING,      // Activity.SPORT_* needs API 3.2
             :subSport => ActivityRecording.SUB_SPORT_TRACK
-        });
+        }), engine, true);
+    }
+
+    // The seam. Everything below this line works against any object answering
+    // createField / start / stop / addLap / save / discard, which is what
+    // source-test/fakes/FakeSession.mc is: the double stands in for the
+    // session, not for Toybox.FitContributor.
+    //
+    // driveTimer is false under test — the drain is called by hand, one tick
+    // per FIT record, rather than waiting a second per split.
+    function startWith(s, engine as SplitEngine, driveTimer as Lang.Boolean) as Void {
+        _engine = engine;
+        session = s;
+        _queue = [];
+        _pendingLap = null;
+        _wroteThisTick = false;
+        _log = [];
         createFields();
         session.start();
         recording = true;
         engine.onSessionStart();
-        _tick = new Timer.Timer();
-        _tick.start(method(:onTick), 1000, true);   // aligned to record cadence
+        if (driveTimer) {
+            _tick = new Timer.Timer();
+            _tick.start(method(:onTick), 1000, true);   // aligned to record cadence
+        }
     }
 
     function createFields() as Void {

@@ -25,6 +25,7 @@ source-test/                        Monkey C unit tests (see AGENTS.md)
 tools/decode_capture.py             find timestamp fields in a BLE capture
 tools/fake_chip.py                  BLE peripheral that replays a rep
 tools/validate_resources.py         what CI can check without the Garmin SDK
+tools/fit_fields.py                 read the fl_* developer fields out of a .FIT
 tools/tests/                        pytest suite for the above
 docs/DESIGN.md                      architecture, timing model, FIT layout
 captures/                           BLE captures the protocol was derived from
@@ -80,4 +81,4 @@ TDD loop this project follows.
 
 ## Where the data ends up
 
-In the `.FIT` file, as developer fields with a `field_description` each (field ids 0–9 on `record`, 20–25 on `lap`, 40–43 on `session`). Garmin Connect charts the record fields and lists lap fields per lap. For lossless µs values use the FIT file directly (FIT SDK `FitCSVTool`, `fitparse`, `fitdecode`); Connect's UI rounds floats but shows uint32 as-is.
+In the `.FIT` file, as developer fields with a `field_description` each (field ids 0–9 on `record`, 20–25 on `lap`, 40–43 on `session`). `python tools/fit_fields.py <file.fit> --values` prints the table and the values; `tools/tests/data/reference-session.fit` is a real file from the simulator that CI asserts the table against. Garmin Connect charts the record fields and lists lap fields per lap. For lossless µs values use the FIT file directly (FIT SDK `FitCSVTool`, `fitparse`, `fitdecode`); Connect's UI rounds floats but shows uint32 as-is.

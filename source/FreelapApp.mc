@@ -14,7 +14,7 @@ class FreelapApp extends Application.AppBase {
 
     function onStart(state as Lang.Dictionary?) as Void {
         course = Course.loadActive();
-        recorder = new FitRecorder();
+        recorder = FitRecorder.fromSettings();
         engine = SplitEngine.fromSettings(course, recorder);
         ble = new FreelapBleDelegate();
         ble.engine = engine;
