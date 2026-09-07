@@ -42,7 +42,7 @@ docs/REVERSE-ENGINEERING.md         sniffing plan
 
 ## Website
 
-<https://maximumtrainer.github.io/garmin-cqc-freelap/>
+<https://maximumtrainer.github.io/garmin-freelap/>
 
 Published by `.github/workflows/pages.yml` from **`site/`** — a plain static
 page, no Jekyll. `docs/` is deliberately *not* the publishing source: Pages
@@ -54,7 +54,7 @@ image in the repository.
 
 ## Work tracking
 
-The plan is broken into [GitHub issues](https://github.com/MaximumTrainer/garmin-cqc-freelap/issues) grouped by milestone (M0 Foundations → M5 Beyond v0.1), each carrying a requirement and acceptance criteria. The issues are the single source of truth: the criteria on an issue are the test list for the PR that closes it (see `AGENTS.md`).
+The plan is broken into [GitHub issues](https://github.com/MaximumTrainer/garmin-freelap/issues) grouped by milestone (M0 Foundations → M5 Beyond v0.1), each carrying a requirement and acceptance criteria. The issues are the single source of truth: the criteria on an issue are the test list for the PR that closes it (see `AGENTS.md`).
 
 ## Build
 

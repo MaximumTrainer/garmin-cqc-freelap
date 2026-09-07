@@ -7,7 +7,7 @@ order before touching code:
 1. `README.md` — layout, build, first run.
 2. `docs/DESIGN.md` — architecture, timing model, FIT field table. This is the
    contract; if your change contradicts it, change the doc in the same PR.
-3. The [GitHub issues](https://github.com/MaximumTrainer/garmin-cqc-freelap/issues)
+3. The [GitHub issues](https://github.com/MaximumTrainer/garmin-freelap/issues)
    — every unit of work already carries a **requirement** and **acceptance
    criteria**. Those criteria are your test list. Do not invent scope outside
    them. The issues are the source of truth; there is no file mirror.

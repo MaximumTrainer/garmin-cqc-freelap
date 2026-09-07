@@ -56,7 +56,7 @@ their site before sending; do not trust an address written down in a repo.
 > If you would rather not share it, a plain "no" is a perfectly good answer and
 > I will not chase it. I would simply rather ask than assume.
 >
-> The project is at https://github.com/MaximumTrainer/garmin-cqc-freelap if it
+> The project is at https://github.com/MaximumTrainer/garmin-freelap if it
 > is useful context.
 >
 > Thank you for your time,

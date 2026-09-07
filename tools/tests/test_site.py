@@ -107,7 +107,7 @@ def test_the_recording_screenshot_says_its_numbers_were_injected(html):
     ("cannot sense", "that the watch cannot sense the transmitters itself"),
     ("FxChip BLE", "the hardware needed"),
     ("MIT", "the licence"),
-    ("garmin-cqc-freelap/issues", "a link to the issue tracker"),
+    ("garmin-freelap/issues", "a link to the issue tracker"),
     ("#build", "a link to the build instructions rather than a copy of them"),
 ])
 def test_the_page_carries(html, needle, what):

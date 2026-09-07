@@ -24,9 +24,9 @@
     <p><strong>Status: in development. This has never been run against a real
     Freelap chip.</strong></p>
     <p>The packet format the app decodes is an educated guess and is
-    <a href="https://github.com/MaximumTrainer/garmin-cqc-freelap/issues/7">still
+    <a href="https://github.com/MaximumTrainer/garmin-freelap/issues/7">still
     unconfirmed</a>; nobody has yet
-    <a href="https://github.com/MaximumTrainer/garmin-cqc-freelap/issues/25">timed
+    <a href="https://github.com/MaximumTrainer/garmin-freelap/issues/25">timed
     twenty reps on a track against MyFreelap</a>. Everything below describes what
     is built and tested against simulated data. Do not expect it to work with a
     chip in your hand today.</p>
@@ -56,7 +56,7 @@ cuts one Garmin lap per Freelap rep.</p>
 
     <dt>A Garmin watch running Connect IQ 3.1 or later</dt>
     <dd>With Bluetooth Low Energy available to apps. See the
-    <a href="https://github.com/MaximumTrainer/garmin-cqc-freelap/blob/main/manifest.xml">device
+    <a href="https://github.com/MaximumTrainer/garmin-freelap/blob/main/manifest.xml">device
     list</a> — not all of them have been tested.</dd>
 </dl>
 
@@ -102,7 +102,7 @@ its totals, per-split fields on every record, and the session summary. They sync
 to Garmin Connect like any other activity, and two scripts pull them back out as
 CSV if you want the exact microseconds, which Connect's own display rounds.</p>
 
-<p><a href="https://github.com/MaximumTrainer/garmin-cqc-freelap/blob/main/docs/EXPORT.md">Getting
+<p><a href="https://github.com/MaximumTrainer/garmin-freelap/blob/main/docs/EXPORT.md">Getting
 the splits out</a> covers both routes and what every column means — including
 which single number in the file is an estimate rather than a measurement.</p>
 
@@ -120,23 +120,23 @@ services.</p>
 
 <p>You need the Connect IQ SDK and a developer key; there is nothing to install
 from a store yet. The
-<a href="https://github.com/MaximumTrainer/garmin-cqc-freelap#build">build and
+<a href="https://github.com/MaximumTrainer/garmin-freelap#build">build and
 test instructions</a> are in the repository, and
-<a href="https://github.com/MaximumTrainer/garmin-cqc-freelap/blob/main/docs/DESIGN.md">the
+<a href="https://github.com/MaximumTrainer/garmin-freelap/blob/main/docs/DESIGN.md">the
 design document</a> explains how the whole thing fits together — the timing
 model, the FIT layout and the decisions behind them.</p>
 
 <p>If you have an FxChip and a packet sniffer, the most useful thing anyone
 could do right now is
-<a href="https://github.com/MaximumTrainer/garmin-cqc-freelap/blob/main/docs/REVERSE-ENGINEERING.md">work
+<a href="https://github.com/MaximumTrainer/garmin-freelap/blob/main/docs/REVERSE-ENGINEERING.md">work
 out the real protocol</a>. Everything downstream of it is built and waiting.</p>
 
 <h2>Questions, bugs, and helping out</h2>
 
 <p>Everything is tracked in
-<a href="https://github.com/MaximumTrainer/garmin-cqc-freelap/issues">the issue
+<a href="https://github.com/MaximumTrainer/garmin-freelap/issues">the issue
 tracker</a>. The source is on
-<a href="https://github.com/MaximumTrainer/garmin-cqc-freelap">GitHub</a>.</p>
+<a href="https://github.com/MaximumTrainer/garmin-freelap">GitHub</a>.</p>
 
 <footer>
     <p>MIT licensed. Copyright © 2026 MaximumTrainer.</p>
