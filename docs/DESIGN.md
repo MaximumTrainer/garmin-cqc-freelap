@@ -286,7 +286,11 @@ Screens:
    ```
 
    Every line is white or a status colour — no mid greys, which vanish on a MIP panel with the backlight off. START/STOP toggles the session; BACK ends a rep manually (see §7.1); BACK while paused opens save/discard.
-4. **Rep summary** (auto after each FINISH, 5 s, dismissable) — split table for the rep.
+4. **Rep summary** — pushed automatically when a rep finishes: one row per split (transmitter, split time, velocity), then the rep total. Gone after five seconds, or on any key or tap; UP/DOWN scroll it when there are more splits than fit, and a `3-9 / 12` marker says so rather than truncating silently. The title is amber when the rep was not `RepStatus.OK`.
+
+   **It must not cost a rep**, which is what shapes it. `SplitEngine.observer` is notified *after* `listener`, so nothing the screen does can come between a rep finishing and its splits being queued for the file — there is a test that asserts that ordering. The overlay is a view and nothing more: the 1 Hz FIT tick, the BLE callbacks and the engine are not driven by the view stack and keep running underneath it. A second rep finishing while it is up replaces its contents and resets its five seconds, rather than pushing a second overlay onto the first.
+
+   How many rows fit is measured from the font, not assumed — six on a 240 px face is the number issue #21 names, and the same code has to do something sensible on 208 and 454. One row is given back to the scroll marker when there is more to show than fits.
 5. **Capture mode** (settings toggle) — shows raw hex of the last packet and a running count, for reverse-engineering in the field without a laptop.
 
    `CaptureLog` keeps a rolling window of the last 60 notifications with their `System.getTimer()` arrival stamps. Two bounds, not one: a packet count *and* a total character budget, because a chip that fragments hard sends many more and shorter packets than the count cap assumes, and the storage value would blow past an API 3.1 device's ~8 KB allowance while still under 60.
