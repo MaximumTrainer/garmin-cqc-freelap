@@ -78,6 +78,8 @@ TDD loop this project follows.
 2. Open the app; it scans for the chip. With the placeholder UUIDs it will only find `tools/fake_chip.py` or a chip whose name starts with `FxChip`/`Freelap`.
 3. Press START, run a rep. In capture mode the last raw packet is shown on screen and the last 60 packets are kept in app storage (written at exit).
 4. BACK while recording = manual rep end; START = pause; BACK while paused = save/discard.
+   There is no way out of a running session without pausing first, which is deliberate. If the
+   watch closes the app with a session still open, the session is **saved**, not discarded.
 
 ## Where the data ends up
 
