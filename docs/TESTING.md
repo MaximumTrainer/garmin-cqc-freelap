@@ -94,6 +94,54 @@ right on an empty track and wrong beside a training partner
 advertisement by hand. Everything downstream of the decoder is testable here.
 The radio is not. That is route 3.
 
+### The scenario suite
+
+`source-test/ChipScenarioTest.mc` feeds frames for several chips and courses -
+two transmitters, the worked-example three, the documented maximum of eleven,
+the 10 m minimum gap, a sprint, a walk, a stranger's chip, and a chip whose
+lap-number byte never increments - through the real decoder, tracker, adapter,
+engine and recorder, and asserts the developer-field values a `FakeSession`
+captures. `tools/scenarios.py` is the oracle: it generates the frames and
+computes the expected values in the same exact integer arithmetic the watch
+uses, and `tools/tests/test_scenarios.py` fails if the committed vectors are
+stale. Run it with the unit tests; it is part of them.
+
+### Producing a real activity file from a scenario
+
+`FakeSession` accepts any value on any field. A real session does not, and it
+has its own timing. So for a change to the recorder, produce a real `.fit` and
+read it back. This recipe is verified; each step below exists because the
+obvious alternative failed.
+
+1. Put a temporary hook at the end of `FreelapApp.onStart()` and **restore the
+   file when you are done** - nothing of the sort is committed. The hook
+   builds a course and engine, starts the recorder, feeds one scenario rep
+   (the `SCN_*` byte arrays from `source-test/ScenarioVectors.mc`, copied in
+   verbatim, since a release build cannot see `(:test)` constants) through
+   `BroadcastFrame` -> `RepTracker` -> `toCrossings()` -> `engine.onRepBurst()`,
+   then a `Timer.Timer` that calls `recorder.save()` after ten seconds and
+   `System.exit()`.
+2. **Set `engine.observer = null` in the hook.** The app is the observer, and
+   on a rep it pushes the five-second summary overlay. In `onStart` there is no
+   main view underneath it yet, so when the overlay dismisses itself it pops the
+   app's only view and the app exits - cleanly, with no exception and no crash
+   log, exactly five seconds after the rep, before the save. This cost eight
+   runs to find.
+3. Build a **release** `.prg` for the device, start `connectiq`, and run
+   `monkeydo bin/<file>.prg <device>` in the **foreground with stdin held
+   open** - `( sleep 90 ) | monkeydo ...`. Backgrounded, it produces nothing.
+4. monkeydo returns as soon as the app is launched, not when it exits. **Poll**
+   `%LOCALAPPDATA%\Temp\com.garmin.connectiq\GARMIN\Activities` for a new
+   file; it appears on `save()`, not on session start.
+5. `python tools/fit_splits.py <file>` and compare with the oracle's
+   `SCN_<NAME>_CUM_US` / `_SPLIT_US` / `_DIST_M`.
+
+`tools/tests/data/scenario-worked100.fit` is one such file, and
+`tools/tests/test_scenario_fit.py` asserts the oracle's values come back out of
+it on every push. It also records two things about the real output that the
+fake could never show: the finish record appears twice, and the activity's
+closing lap repeats the last rep's lap fields.
+
 ---
 
 ## 3. The simulator with a real radio — an nRF52 board

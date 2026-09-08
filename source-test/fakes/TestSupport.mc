@@ -125,7 +125,17 @@ module TestSupport {
     // A recorder + engine + course wired together over a session double.
     // Returns a Rig so a test can reach either end.
     function recorderOn(session, spec as Lang.String) as Rig {
-        var recorder = new FitRecorder(true, false);
+        return recorderOnWith(session, spec, true);
+    }
+
+    // `clearAfterWrite` on: the app's default, and what the recorder tests
+    // exercise - after a rep's records the recorder writes one blanking
+    // record so the split fields do not linger on every 1 Hz record after.
+    // Off: for tests that assert on the value arrays and want exactly the
+    // records, with no trailing zeros from a feature tested elsewhere.
+    function recorderOnWith(session, spec as Lang.String,
+                            clearAfterWrite as Lang.Boolean) as Rig {
+        var recorder = new FitRecorder(clearAfterWrite, false);
         var engine = new SplitEngine(new Course(spec, "test"), recorder, 150);
         recorder.startWith(session, engine, false);   // no Timer under test
         return new Rig(recorder, engine, session);
