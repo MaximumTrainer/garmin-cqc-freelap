@@ -63,6 +63,28 @@ module TestSupport {
     // Element-wise array comparison. Test.assertEqual on two Arrays compares
     // references, so it fails for equal contents and — worse — would pass for
     // the same array compared with itself.
+    // A decoded advertisement built directly, so tests of what happens *after*
+    // decoding do not need an encoder. Building frame bytes in Monkey C would
+    // mean a second encoder in the repo, and AGENTS.md is clear about what
+    // happens to two implementations of the same layout.
+    function advertisement(chip as Lang.String, lapNumber as Lang.Number,
+                           offset as Lang.Number, fromLap as Lang.Number,
+                           block as Lang.Number) as Advertisement {
+        var out = new Advertisement();
+        out.prefix = chip.substring(0, 2);
+        out.chipId = chip.substring(3, chip.length()).toNumber();
+        out.lapNumber = lapNumber;
+        out.offset = offset.toLong();
+        out.fromLap = fromLap.toLong();
+        out.block = block.toLong();
+        return out;
+    }
+
+    // One rep of a three-transmitter course, 10 s total, legs 3/3/4.
+    function repFrame(chip as Lang.String, lapNumber as Lang.Number) as Advertisement {
+        return advertisement(chip, lapNumber, 3585, 3585, 13825);
+    }
+
     function assertArrayEquals(actual as Lang.Array, expected as Lang.Array, message as Lang.String) as Void {
         Test.assertEqualMessage(actual.size(), expected.size(),
             message + ": expected " + expected.size().format("%d") +
