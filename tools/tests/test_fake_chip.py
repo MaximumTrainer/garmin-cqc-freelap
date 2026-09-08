@@ -1,185 +1,303 @@
-"""Ring 4b: the fake chip's packet builder. This layout is the mirror of
-FreelapProtocol.feed() and must change in lock-step with it (AGENTS.md)."""
-from fake_chip import build_packet, fragments
+"""The fake chip (#27).
 
+Its whole purpose is to stand in for hardware nobody has yet, so the thing
+worth testing is that what it emits **decodes back to what it meant** -- using
+the same decoder the watch will use. A fake that only agreed with itself would
+let a wrong layout look right in every test we own, which is why the frame
+builders live in `freelap_frame.py` and are round-tripped here rather than
+re-implemented.
+"""
+import io
 
-def test_build_packet_writes_the_sync_byte_count_and_chip_id():
-    pkt = build_packet([(0, 1), (4120, 2)], chip_id=0x1234)
+import pytest
 
-    assert pkt[0] == 0xA5
-    assert pkt[1] == 2
-    assert pkt[2:4] == b"\x34\x12"          # chip id, little endian
-    assert len(pkt) == 4 + 2 * 5
+import fake_chip
+import freelap_frame as ff
 
-
-def test_build_packet_writes_each_crossing_as_u32_le_ticks_plus_code():
-    pkt = build_packet([(4120, 2)], chip_id=0)
-
-    assert pkt[4:8] == b"\x18\x10\x00\x00"  # 4120 little endian
-    assert pkt[8] == 2
-
-
-def test_fragments_splits_on_the_20_byte_ble_write_limit():
-    pkt = build_packet([(i * 1000, 2) for i in range(6)])   # 4 + 30 = 34 bytes
-
-    frags = fragments(pkt)
-
-    assert [len(f) for f in frags] == [20, 14]
-    assert b"".join(frags) == pkt
+COURSE = fake_chip.parse_course("S:0;L:30;L:60;F:100")
 
 
 # ---------------------------------------------------------------------------
-# Synthetic sessions (issue #27)
+# Course specs
 # ---------------------------------------------------------------------------
 
 def test_parse_course_reads_the_same_spec_the_watch_does():
-    from fake_chip import parse_course, CODE_START, CODE_LAP, CODE_FINISH
-
-    assert parse_course("S:0;L:30;L:60;F:100") == [
-        (CODE_START, 0.0), (CODE_LAP, 30.0), (CODE_LAP, 60.0), (CODE_FINISH, 100.0)]
+    assert fake_chip.parse_course("S:0;L:30;F:100") == [
+        (fake_chip.CODE_START, 0.0),
+        (fake_chip.CODE_LAP, 30.0),
+        (fake_chip.CODE_FINISH, 100.0),
+    ]
 
 
 def test_parse_course_skips_a_segment_without_a_colon():
-    from fake_chip import parse_course
-
-    # Course.mc drops these rather than rejecting the whole spec; the fake
-    # chip has to agree or the two disagree about what a course even is.
-    assert len(parse_course("S:0;garbage;F:100")) == 2
+    assert len(fake_chip.parse_course("S:0;;L:30;F:100")) == 3
 
 
 def test_parse_course_rejects_an_unknown_code():
-    import pytest as _pytest
-    from fake_chip import parse_course
-
-    with _pytest.raises(ValueError, match="X"):
-        parse_course("S:0;X:30;F:100")
+    with pytest.raises(ValueError):
+        fake_chip.parse_course("S:0;X:30;F:100")
 
 
 def test_parse_course_rejects_a_single_transmitter():
-    import pytest as _pytest
-    from fake_chip import parse_course
-
-    with _pytest.raises(ValueError, match="two transmitters"):
-        parse_course("S:0")
-
-
-def test_a_synthetic_rep_places_crossings_by_distance_over_speed():
-    from fake_chip import parse_course, synthetic_rep, CODE_START, CODE_FINISH
-
-    rep = synthetic_rep(parse_course("S:0;L:30;F:100"), speed_mps=10.0, jitter=0.0)
-
-    assert rep[0] == (0, CODE_START)        # 0 m at 10 m/s
-    assert rep[1] == (3000, 2)              # 30 m at 10 m/s = 3.000 s
-    assert rep[2] == (10000, CODE_FINISH)   # 100 m = 10.000 s
-
-
-def test_a_synthetic_session_sends_one_packet_per_rep():
-    from fake_chip import parse_course, synthetic_session
-
-    packets = synthetic_session(parse_course("S:0;L:30;L:60;F:100"), reps=60)
-
-    assert len(packets) == 60
-    assert all(p[0] == 0xA5 and p[1] == 4 for p in packets)
-
-
-def test_synthetic_reps_are_not_all_identical():
-    from fake_chip import parse_course, synthetic_session
-
-    # 60 byte-identical reps would let a decoder bug that keys off "the value
-    # changed" pass a 60-rep soak test.
-    packets = synthetic_session(parse_course("S:0;L:30;F:100"), reps=10)
-
-    assert len(set(packets)) > 1, "every rep has the same timings"
-
-
-def test_synthetic_reps_survive_the_round_trip_through_the_fragmenter():
-    from fake_chip import parse_course, synthetic_session, fragments
-
-    packet = synthetic_session(parse_course("S:0;L:30;L:60;F:100"), reps=1)[0]
-
-    assert len(packet) == 4 + 4 * 5
-    assert b"".join(fragments(packet)) == packet
-    assert [len(f) for f in fragments(packet)] == [20, 4]   # genuinely fragmented
+    with pytest.raises(ValueError):
+        fake_chip.parse_course("S:0")
 
 
 # ---------------------------------------------------------------------------
-# Replaying a real capture (issue #27)
+# Frames
 # ---------------------------------------------------------------------------
 
-def test_parse_capture_reads_the_decode_capture_tsv_shape():
-    from fake_chip import parse_capture
+def test_a_rep_decodes_back_to_the_times_it_was_built_from():
+    advertisement, scan_response = fake_chip.rep_frames(COURSE, speed_mps=10.0,
+                                                        jitter=0.0)
 
-    rows = parse_capture([
-        "1.000\t0x0012\tA5041234\n",
-        "1.030\t0x0012\t180F0000\n",
+    decoded = ff.decode_advertisement(advertisement)
+    laps = ff.decode_scan_response(scan_response)
+    legs = ff.segments(decoded, laps)
+
+    # 100 m at 10 m/s is 10.00 s, split 30/30/40.
+    assert ff.to_centiseconds(decoded.split()) == 1000
+    assert [ff.to_centiseconds(t) for t in legs] == [300, 300, 400]
+
+
+def test_the_intermediates_go_in_the_scan_response_and_the_finish_does_not():
+    _advertisement, scan_response = fake_chip.rep_frames(COURSE, jitter=0.0)
+
+    # Four transmitters, so two intermediates. Putting the finish in here too
+    # would produce a phantom fifth leg of zero.
+    assert len(ff.decode_scan_response(scan_response)) == 2
+
+
+def test_a_two_transmitter_course_has_an_empty_scan_response():
+    course = fake_chip.parse_course("S:0;F:60")
+
+    _advertisement, scan_response = fake_chip.rep_frames(course, jitter=0.0)
+
+    assert ff.decode_scan_response(scan_response) == []
+
+
+def test_a_rep_does_not_start_at_tick_zero():
+    advertisement, _scan_response = fake_chip.rep_frames(COURSE, jitter=0.0)
+
+    # A decoder that forgot to subtract an origin would be perfect on a
+    # session starting at zero and wrong on every real one.
+    assert ff.decode_advertisement(advertisement).offset != 0
+
+
+def test_the_chip_identity_reaches_the_frame():
+    advertisement, _ = fake_chip.rep_frames(COURSE, prefix="ZZ", chip_id=1234)
+
+    assert ff.decode_advertisement(advertisement).chip == "ZZ-1234"
+
+
+def test_a_faster_athlete_gets_shorter_times():
+    slow, _ = fake_chip.rep_frames(COURSE, speed_mps=5.0, jitter=0.0)
+    fast, _ = fake_chip.rep_frames(COURSE, speed_mps=10.0, jitter=0.0)
+
+    assert ff.decode_advertisement(fast).split() < ff.decode_advertisement(slow).split()
+
+
+# ---------------------------------------------------------------------------
+# Sessions
+# ---------------------------------------------------------------------------
+
+def test_a_session_produces_one_frame_pair_per_rep():
+    session = fake_chip.synthetic_session(COURSE, 5)
+
+    assert len(session) == 5
+    assert all(len(pair) == 2 for pair in session)
+
+
+def test_reps_are_not_all_identical():
+    session = fake_chip.synthetic_session(COURSE, 5, jitter=1.0)
+
+    totals = {ff.decode_advertisement(ad).split() for ad, _ in session}
+
+    # A decoder bug that keys off "the value changed" sails through a session
+    # of identical reps.
+    assert len(totals) > 1
+
+
+def test_the_chip_counter_runs_on_across_the_session():
+    session = fake_chip.synthetic_session(COURSE, 4, rest_s=3.0)
+
+    starts = [ff.decode_advertisement(ad).offset for ad, _ in session]
+
+    assert starts == sorted(starts)
+    assert len(set(starts)) == 4
+
+
+def test_each_rep_measures_from_its_own_start():
+    session = fake_chip.synthetic_session(COURSE, 3, jitter=0.0)
+
+    for advertisement, scan_response in session:
+        decoded = ff.decode_advertisement(advertisement)
+        laps = ff.decode_scan_response(scan_response)
+        # However far into the session, a rep is still ~100 m of running and
+        # its legs still add up to it.
+        assert sum(ff.segments(decoded, laps)) == decoded.split()
+
+
+def test_the_lap_number_advances_with_the_reps():
+    session = fake_chip.synthetic_session(COURSE, 3)
+
+    assert [ff.decode_advertisement(ad).lap_number for ad, _ in session] == [0, 1, 2]
+
+
+def test_a_long_session_stays_inside_the_field_widths():
+    # 400 reps of 100 m with rests is a couple of hours of chip uptime; the
+    # 24-bit lap timestamps are the narrowest field and the first to overflow.
+    session = fake_chip.synthetic_session(COURSE, 400)
+
+    for _advertisement, scan_response in session:
+        assert len(scan_response) == 2 + 3 * ff.MAX_LAPS
+
+
+# ---------------------------------------------------------------------------
+# Output
+# ---------------------------------------------------------------------------
+
+def test_the_printed_block_carries_both_frames_and_the_decoded_times():
+    session = fake_chip.synthetic_session(COURSE, 1, jitter=0.0)
+    out = io.StringIO()
+
+    fake_chip.print_session(session, stream=out)
+    text = out.getvalue()
+
+    assert "AD " in text and "SR " in text
+    assert "BC-9636" in text
+
+
+def test_the_description_reports_a_leg_per_transmitter_gap():
+    advertisement, scan_response = fake_chip.rep_frames(COURSE, speed_mps=10.0,
+                                                        jitter=0.0)
+
+    line = fake_chip.describe(advertisement, scan_response)
+
+    assert "00:10.00" in line
+    assert line.count("00:0") >= 3
+
+
+def test_monkeyc_vectors_are_byte_arrays_the_compiler_accepts():
+    session = fake_chip.synthetic_session(COURSE, 2, jitter=0.0)
+
+    text = fake_chip.monkeyc_vectors(session, name="REP")
+
+    assert "const REP_AD_0 = [0x63,0x03" in text
+    assert "]b;" in text
+    assert text.count("const ") == 4
+
+
+def test_generated_vectors_decode_back(tmp_path):
+    session = fake_chip.synthetic_session(COURSE, 1, jitter=0.0)
+    text = fake_chip.monkeyc_vectors(session)
+
+    # Pull the bytes back out of the generated Monkey C and check they are
+    # still the frame. A vector that is pretty but wrong is worse than none.
+    literal = text.split("[")[1].split("]")[0]
+    recovered = bytes(int(b, 16) for b in literal.split(","))
+
+    assert recovered == session[0][0]
+
+
+# ---------------------------------------------------------------------------
+# Chip ids
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text,expected", [
+    ("BC-9636", ("BC", 9636)),
+    ("bc-9636", ("BC", 9636)),
+    ("ZZ-1", ("ZZ", 1)),
+])
+def test_a_chip_id_is_parsed_the_way_it_is_printed(text, expected):
+    assert fake_chip.parse_chip(text) == expected
+
+
+@pytest.mark.parametrize("text", ["9636", "B-9636", "BCD-9636", "BC-", "BC-xy"])
+def test_a_malformed_chip_id_is_refused(text):
+    with pytest.raises(ValueError):
+        fake_chip.parse_chip(text)
+
+
+# ---------------------------------------------------------------------------
+# Replay
+# ---------------------------------------------------------------------------
+
+def test_parse_capture_reads_the_export_shape():
+    rows = fake_chip.parse_capture([
+        "1700000000.0\t0x0025\t6303580042\n",
+        "1700000000.5\t0x0025\t63:03:58:00:43\n",
     ])
 
-    assert rows == [(1.0, bytes.fromhex("A5041234")), (1.03, bytes.fromhex("180F0000"))]
-
-
-def test_parse_capture_accepts_colon_separated_hex_from_tshark():
-    from fake_chip import parse_capture
-
-    assert parse_capture(["2.5\t0x0012\ta5:04:12:34\n"]) == [(2.5, bytes.fromhex("A5041234"))]
+    assert [when for when, _ in rows] == [1700000000.0, 1700000000.5]
+    assert rows[0][1] == bytes.fromhex("6303580042")
 
 
 def test_parse_capture_skips_rows_a_real_export_is_full_of():
-    from fake_chip import parse_capture
-
-    rows = parse_capture([
-        "\n",                                   # blank
-        "frame.time_epoch\thandle\tvalue\n",    # a header
-        "1.000\t0x0012\t\n",                    # no payload
-        "1.100\t0x0012\tnothex\n",              # not hex
-        "1.200\t0x0012\tA5\n",                  # the only real one
+    rows = fake_chip.parse_capture([
+        "frame.time_epoch\tbtatt.handle\tbtatt.value\n",   # header
+        "\n",                                              # blank
+        "1700000000.0\t0x0025\t\n",                        # no payload
+        "1700000000.0\t0x0025\tnothex\n",                  # not hex
+        "1700000001.0\t0x0025\t630358\n",                  # the only good row
     ])
 
-    assert rows == [(1.2, b"\xa5")]
+    assert len(rows) == 1
 
 
-def test_replay_preserves_the_gaps_between_packets():
-    from fake_chip import replay_schedule
+def test_replay_preserves_the_gaps_between_frames():
+    schedule = fake_chip.replay_schedule([
+        (100.0, b"\x01"), (100.5, b"\x02"), (103.0, b"\x03")])
 
-    schedule = replay_schedule([(10.0, b"\x01"), (10.03, b"\x02"), (12.53, b"\x03")])
-    delays = [round(d, 6) for d, _ in schedule]
-
-    # The first goes out immediately; the rest wait exactly what the capture
-    # recorded, so the watch sees the chip's own fragmentation timing.
-    assert delays == [0.0, 0.03, 2.5]
+    # The advertising rate is what #9 has to cope with, so replaying it as a
+    # burst would test the easy case only.
+    assert [round(delay, 3) for delay, _ in schedule] == [0.0, 0.5, 2.5]
 
 
 def test_replay_never_waits_a_negative_time():
-    from fake_chip import replay_schedule
+    schedule = fake_chip.replay_schedule([(100.0, b"\x01"), (99.0, b"\x02")])
 
-    # Out-of-order rows happen in exports that merge two interfaces.
-    delays = [d for d, _ in replay_schedule([(5.0, b"\x01"), (4.0, b"\x02")])]
-
-    assert all(d >= 0 for d in delays)
+    assert all(delay >= 0 for delay, _ in schedule)
 
 
 def test_replay_of_an_empty_capture_is_an_empty_schedule():
-    from fake_chip import replay_schedule
-
-    assert replay_schedule([]) == []
+    assert fake_chip.replay_schedule([]) == []
 
 
 # ---------------------------------------------------------------------------
-# The CLI
+# CLI
 # ---------------------------------------------------------------------------
 
 def test_the_cli_defaults_match_the_documented_invocation():
-    from fake_chip import build_parser
+    args = fake_chip.build_parser().parse_args([])
 
-    args = build_parser().parse_args(["--synthetic", "--reps", "60",
-                                      "--course", "S:0;L:30;L:60;F:100"])
-
-    assert args.synthetic and args.reps == 60
-    assert args.course == "S:0;L:30;L:60;F:100"
-    assert args.mtu == 20, "20 bytes is the BLE notification limit, not a preference"
+    assert args.course == fake_chip.DEFAULT_COURSE
+    assert args.reps == 1
+    assert args.rounding == "round"
+    assert not args.advertise
 
 
-def test_replay_and_synthetic_are_both_reachable_from_the_cli():
-    from fake_chip import build_parser
+def test_print_and_vectors_are_both_reachable_from_the_cli(capsys):
+    assert fake_chip.main(["--print", "--reps", "2"]) == 0
+    assert "AD " in capsys.readouterr().out
 
-    assert build_parser().parse_args(["--replay", "cap.tsv"]).replay == "cap.tsv"
-    assert build_parser().parse_args([]).replay is None
+    assert fake_chip.main(["--vectors", "--reps", "1"]) == 0
+    assert "]b;" in capsys.readouterr().out
+
+
+def test_the_cli_can_be_told_which_chip_to_be(capsys):
+    fake_chip.main(["--print", "--chip", "ZZ-1234"])
+
+    assert "ZZ-1234" in capsys.readouterr().out
+
+
+def test_advertising_says_what_it_needs_rather_than_failing_obscurely():
+    session = fake_chip.synthetic_session(COURSE, 1)
+
+    # It has never been run; #27. Whichever way it fails, it has to explain
+    # itself, because the person hitting this has a chip and a Linux box and
+    # is trying to do the most valuable thing left in the project.
+    with pytest.raises((SystemExit, NotImplementedError)) as caught:
+        fake_chip.advertise(session)
+
+    assert str(caught.value)

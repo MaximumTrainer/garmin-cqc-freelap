@@ -61,12 +61,20 @@ rhythm. A PR that adds five classes and one test at the end will be sent back.
 
 The outermost thing a machine can run here.
 
-- `tools/fake_chip.py` (Linux + BlueZ + `bless`) advertises the hypothesised
-  service and replays a rep burst, including fragmentation. It is the
-  end-to-end harness for the BLE path: scan → pair → subscribe → decode →
-  split engine → FIT. **When you change `FreelapProtocol.mc`, change
-  `fake_chip.py` in the same commit** — the two hold the same layout and drift
-  between them is a silent test hole.
+- `tools/freelap_frame.py` is the reference implementation of the broadcast
+  frame: build one, decode one, do the arithmetic. **When you change
+  `FreelapProtocol.mc`, change `freelap_frame.py` in the same commit** — the
+  two hold the same layout, and drift between them is a silent test hole.
+- `tools/fake_chip.py` builds its frames from it, so the fake cannot drift into
+  agreeing with a decoder that is wrong. `--print` needs no Bluetooth and is
+  how most of the app's development can run; `--vectors` emits Monkey C byte
+  arrays for `source-test/`. `--advertise` needs Linux, BlueZ and root, and has
+  never been run (#27).
+- The only external check that any of this matches a real chip is the worked
+  example in Freelap's frame document. It is confidential, so the fixture
+  holding it is **not committed**, and the tests using it skip when it is
+  absent — see `tools/tests/test_freelap_frame.py`. A green suite without it
+  proves self-consistency, not correctness.
 - FIT output is verified outside the watch: run a session in the simulator or
   on the watch, pull the `.FIT`, and assert on developer fields with the FIT
   SDK / `fitdecode` rather than by eyeballing Garmin Connect (Connect rounds

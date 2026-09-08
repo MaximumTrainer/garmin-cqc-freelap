@@ -1,59 +1,47 @@
 #!/usr/bin/env python3
-"""Fake FxChip BLE peripheral, for testing the watch app without transmitters.
+"""Fake FxChip BLE, for testing the watch app without a chip or transmitters.
 
-Three modes:
+    fake_chip.py --print                            frames as hex, no radio
+    fake_chip.py --print --reps 60 \\
+                 --course S:0;L:30;L:60;F:100       a whole session
+    fake_chip.py --vectors                          Monkey C test vectors
+    fake_chip.py --advertise                        broadcast for real (Linux)
+    fake_chip.py --replay captures/<date>/adv.tsv   a real capture
 
-    fake_chip.py                                    one rep on Enter (default)
-    fake_chip.py --synthetic --reps 60 \\
-                 --course S:0;L:30;L:60;F:100       unattended, N reps
-    fake_chip.py --replay captures/<date>/cap.tsv   a real capture, original timing
+The frames come from `freelap_frame.py`, which is also what the watch's decoder
+has to agree with -- so the fake cannot drift into agreeing with a decoder that
+is wrong, which is the rule in AGENTS.md and the reason the builders live there
+rather than here.
 
-The packet layout here is the mirror of `FreelapProtocol.expectedLength` /
-`decodeMessage`. **Change them in the same commit** (AGENTS.md): drift between
-the two is a silent test hole, because the fake would keep agreeing with itself.
+The chip broadcasts and never accepts a connection (#8), so this advertises; it
+does not serve a GATT profile. Everything except `advertise()` is pure and
+tested in `tools/tests/test_fake_chip.py`, and `--print` needs no Bluetooth at
+all, which is the mode most of the app's development can use.
 
-Everything except the actual advertising is pure and tested in
-`tools/tests/test_fake_chip.py`; only `serve()` needs a radio.
-
-Requires Linux + BlueZ and `pip install bless`. macOS cannot do this: CoreBluetooth
-will not let a process advertise a custom GATT service with a chosen UUID, so the
-watch has nothing to discover. Use a Linux box or a Raspberry Pi.
+**`--advertise` has never been run.** It needs Linux, BlueZ and root, none of
+which this was written on. See #27.
 """
 import argparse
-import asyncio
-import struct
 import sys
 
-# bless is only needed to actually advertise; the packet builders below are
-# imported by tools/tests/ on machines (and in CI) that have no BlueZ.
-try:
-    from bless import BlessServer, GATTCharacteristicProperties, GATTAttributePermissions
-except ImportError:
-    BlessServer = None
+import freelap_frame as ff
 
-SERVICE = "6E400001-B5A3-F393-E0A9-E50E24DCC9E6"
-NOTIFY = "6E400003-B5A3-F393-E0A9-E50E24DCC9E6"
-COMMAND = "6E400002-B5A3-F393-E0A9-E50E24DCC9E6"
-NAME = "FxChip-TEST"
+# The chip's tick is 1/1024 s -- which is why the document's conversion to
+# hundredths is 10.24 rather than a round number. Deriving it here rather than
+# hard-coding 1024 keeps the two definitions from drifting apart.
+TICKS_PER_SECOND = 100 * ff.TICKS_PER_CENTISECOND
 
-# One rep on a S:0;L:30;L:60;F:100 course, chip ticks in ms.
-REP = [(0, 1), (4120, 2), (7480, 2), (11930, 3)]
+DEFAULT_COURSE = "S:0;L:30;L:60;F:100"
+DEFAULT_PREFIX = "BC"
+DEFAULT_CHIP_ID = 9636
+
+# An arbitrary chip uptime for the first crossing of a session. Non-zero on
+# purpose: a decoder that forgot to subtract an origin would look perfect with
+# a session that started at tick 0.
+DEFAULT_EPOCH = 3585
 
 CODE_START, CODE_LAP, CODE_FINISH = 1, 2, 3
 
-
-def build_packet(rep, chip_id=0x1234):
-    body = bytes([0xA5, len(rep)]) + struct.pack("<H", chip_id)
-    for ticks, code in rep:
-        body += struct.pack("<IB", ticks, code)
-    return body
-
-
-def fragments(data, mtu=20):
-    return [data[i : i + mtu] for i in range(0, len(data), mtu)]
-
-
-# ---------------------------------------------------------------- synthetic
 
 def parse_course(spec):
     """"S:0;L:30;F:100" -> [(code, metres), ...].
@@ -70,41 +58,117 @@ def parse_course(spec):
         letter, _, distance = segment.partition(":")
         letter = letter.strip().upper()
         if letter not in codes:
-            raise ValueError(f"unknown transmitter code {letter!r} in {spec!r}")
+            raise ValueError("unknown transmitter code %r in %r" % (letter, spec))
         out.append((codes[letter], float(distance)))
     if len(out) < 2:
-        raise ValueError(f"a course needs at least two transmitters: {spec!r}")
+        raise ValueError("a course needs at least two transmitters: %r" % (spec,))
     return out
 
 
-def synthetic_rep(course, speed_mps=8.0, jitter=0.0, index=0):
-    """One rep over `course` at `speed_mps`, as [(ticks_ms, code), ...].
+def crossing_ticks(course, speed_mps=8.0, jitter=0.0, index=0, epoch=DEFAULT_EPOCH):
+    """Absolute chip ticks for each crossing of one rep.
 
-    `jitter` varies the speed per rep so 60 reps are not 60 identical
-    timestamps - a decoder bug that keys off "the value changed" would sail
+    `jitter` varies the speed per rep so that 60 reps are not 60 identical
+    timestamps -- a decoder bug that keys off "the value changed" would sail
     through otherwise.
     """
     speed = speed_mps + jitter * ((index % 5) - 2) * 0.1
+    return [epoch + int(round(metres / speed * TICKS_PER_SECOND))
+            for _code, metres in course]
+
+
+def rep_frames(course, speed_mps=8.0, jitter=0.0, index=0, epoch=DEFAULT_EPOCH,
+               prefix=DEFAULT_PREFIX, chip_id=DEFAULT_CHIP_ID, lap_number=0):
+    """One rep as (advertisement, scan_response) manufacturer payloads.
+
+    The first crossing is the start, the last is the finish, and everything
+    between them goes in the scan response. OFFSET and FROMLAP are both set to
+    the start: that is what the vendor's worked example shows for a first lap,
+    and whether a real chip accumulates them across reps instead is #5 run C.
+    """
+    ticks = crossing_ticks(course, speed_mps, jitter, index, epoch)
+    start, finish, intermediates = ticks[0], ticks[-1], ticks[1:-1]
+    advertisement = ff.build_advertisement(
+        prefix, chip_id, lap_number,
+        offset=start, from_lap=start, block=finish)
+    return advertisement, ff.build_scan_response(intermediates)
+
+
+def synthetic_session(course, reps, speed_mps=8.0, jitter=1.0, rest_s=3.0,
+                      prefix=DEFAULT_PREFIX, chip_id=DEFAULT_CHIP_ID,
+                      epoch=DEFAULT_EPOCH):
+    """`reps` reps, each starting where the last one finished plus a rest.
+
+    Returns [(advertisement, scan_response), ...]. The chip's counters run on
+    across the session even though each rep measures from its own start, which
+    is what stops a decoder getting away with assuming an origin of zero.
+    """
     out = []
-    for code, metres in course:
-        out.append((int(round(metres / speed * 1000)), code))
+    at = epoch
+    for index in range(reps):
+        advertisement, scan_response = rep_frames(
+            course, speed_mps, jitter, index, at, prefix, chip_id,
+            lap_number=index % 256)
+        out.append((advertisement, scan_response))
+        decoded = ff.decode_advertisement(advertisement)
+        at = decoded.block + int(round(rest_s * TICKS_PER_SECOND))
     return out
 
 
-def synthetic_session(course, reps, speed_mps=8.0, jitter=1.0):
-    """`reps` packets, each a complete rep."""
-    return [build_packet(synthetic_rep(course, speed_mps, jitter, i)) for i in range(reps)]
+def describe(advertisement, scan_response, rounding="round"):
+    """A human-readable line per rep: what a correct decoder should see."""
+    decoded = ff.decode_advertisement(advertisement)
+    laps = ff.decode_scan_response(scan_response)
+    legs = [ff.format_time(ff.to_centiseconds(t, rounding))
+            for t in ff.segments(decoded, laps)]
+    total = ff.format_time(ff.to_centiseconds(decoded.split(), rounding))
+    return "%s  lap#%-3d total %s  legs %s" % (
+        decoded.chip, decoded.lap_number, total, " ".join(legs))
+
+
+def as_hex(payload):
+    return " ".join("%02x" % b for b in payload)
+
+
+def print_session(session, rounding="round", stream=None):
+    """Frames as hex plus the values they decode to, one rep per block.
+
+    `stream` defaults late rather than in the signature: binding sys.stdout at
+    import time writes to whatever stdout was then, which ignores any later
+    redirect and makes this untestable.
+    """
+    if stream is None:
+        stream = sys.stdout
+    for advertisement, scan_response in session:
+        stream.write("# %s\n" % describe(advertisement, scan_response, rounding))
+        stream.write("AD %s\n" % as_hex(advertisement))
+        stream.write("SR %s\n\n" % as_hex(scan_response))
+
+
+def monkeyc_vectors(session, name="SESSION"):
+    """The same frames as Monkey C byte-array literals, for #7's unit tests.
+
+    Generated rather than typed because a vector transcribed by hand is a
+    vector that can disagree with the encoder it is meant to check.
+    """
+    lines = ["// Generated by tools/fake_chip.py --vectors. Do not edit by hand."]
+    for index, (advertisement, scan_response) in enumerate(session):
+        lines.append("const %s_AD_%d = [%s]b;"
+                     % (name, index, ",".join("0x%02x" % b for b in advertisement)))
+        lines.append("const %s_SR_%d = [%s]b;"
+                     % (name, index, ",".join("0x%02x" % b for b in scan_response)))
+    return "\n".join(lines)
 
 
 # ------------------------------------------------------------------ replay
 
 def parse_capture(lines):
-    """A tshark TSV export -> [(arrival_seconds, hex), ...].
+    """A capture export -> [(arrival_seconds, payload), ...].
 
-    Accepts what `tools/decode_capture.py` reads and what the watch's own
-    "Dump capture" prints: <time>\\t<handle>\\t<hex>. Lines that are blank, or
-    have no payload, are skipped rather than failing the whole replay - a real
-    export has plenty of both.
+    Accepts "<time>\\t<something>\\t<hex>", which is what tshark exports, what
+    `tools/decode_capture.py` reads and what the watch's own capture dump
+    prints. Blank rows, header rows and rows with no payload are skipped
+    rather than failing the whole replay -- a real export has plenty of each.
     """
     out = []
     for line in lines:
@@ -125,11 +189,12 @@ def parse_capture(lines):
 
 
 def replay_schedule(capture):
-    """[(delay_before_this_packet_seconds, bytes), ...].
+    """[(delay_before_this_frame_seconds, payload), ...].
 
-    The first packet goes out immediately; every later one waits the gap the
-    capture recorded, so the watch sees the chip's original fragmentation and
-    inter-packet timing rather than a burst as fast as the loop can run.
+    The first frame goes out immediately; every later one waits the gap the
+    capture recorded, so the watch sees the chip's original advertising rate
+    and window rather than a burst as fast as the loop can run. That rate is
+    exactly what #9 has to cope with.
     """
     schedule = []
     previous = None
@@ -140,85 +205,89 @@ def replay_schedule(capture):
     return schedule
 
 
-# ------------------------------------------------------------------ serving
+# ---------------------------------------------------------------- the radio
 
-async def notify(server, data, mtu=20, gap=0.03):
-    for fragment in fragments(data, mtu):
-        server.get_characteristic(NOTIFY).value = bytearray(fragment)
-        server.update_value(SERVICE, NOTIFY)
-        await asyncio.sleep(gap)
+def advertise(session, window_s=10.0, interval_s=0.1, rest_s=3.0):
+    """Broadcast each rep for its advertising window. Linux, BlueZ, root.
+
+    NOT RUN. This is the one part of this tool that needs a radio, and it was
+    written on a machine without one. Treat it as a starting point, not as
+    working code, and see #27.
+
+    macOS cannot do this at all: CoreBluetooth will not let a process set
+    arbitrary manufacturer data or a custom scan response.
+    """
+    try:
+        import dbus  # noqa: F401
+    except ImportError:
+        raise SystemExit(
+            "--advertise needs Linux, BlueZ and python-dbus. On any other "
+            "machine use --print, which needs no radio.")
+    raise NotImplementedError(
+        "The BlueZ LEAdvertisement registration is #27. The frames are ready: "
+        "use --print to see exactly what has to go out, as manufacturer data "
+        "under company 0x%04x, repeated every %.2gs for %.4gs after each rep."
+        % (ff.COMPANY_ID, interval_s, window_s))
 
 
-async def serve(args):
-    if BlessServer is None:
-        sys.exit("pip install bless (and run on Linux with BlueZ)")
-
-    server = BlessServer(name=NAME)
-    await server.add_new_service(SERVICE)
-    await server.add_new_characteristic(
-        SERVICE, NOTIFY,
-        GATTCharacteristicProperties.notify | GATTCharacteristicProperties.read,
-        None, GATTAttributePermissions.readable)
-    await server.add_new_characteristic(
-        SERVICE, COMMAND,
-        GATTCharacteristicProperties.write, None, GATTAttributePermissions.writeable)
-    await server.start()
-
-    if args.replay:
-        with open(args.replay) as handle:
-            schedule = replay_schedule(parse_capture(handle))
-        print(f"Advertising as {NAME}. Replaying {len(schedule)} packet(s) from {args.replay}.")
-        for delay, data in schedule:
-            await asyncio.sleep(delay)
-            await notify(server, data, args.mtu, 0.0)
-            print("sent", data.hex(" "))
-        print("replay complete")
-        return
-
-    if args.synthetic:
-        course = parse_course(args.course)
-        packets = synthetic_session(course, args.reps, args.speed)
-        print(f"Advertising as {NAME}. Sending {len(packets)} rep(s), "
-              f"{args.rest}s apart, over {args.course}.")
-        for i, packet in enumerate(packets):
-            await notify(server, packet, args.mtu)
-            print(f"rep {i + 1}/{len(packets)}", packet.hex(" "))
-            await asyncio.sleep(args.rest)
-        print("session complete")
-        return
-
-    print(f"Advertising as {NAME}. Press Enter to send a rep, Ctrl-C to quit.")
-    loop = asyncio.get_event_loop()
-    while True:
-        await loop.run_in_executor(None, sys.stdin.readline)
-        packet = build_packet(REP)
-        await notify(server, packet, args.mtu)
-        print("sent", packet.hex(" "))
-
+# ------------------------------------------------------------------- cli
 
 def build_parser():
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--print", dest="show", action="store_true",
+                        help="print frames as hex and stop (no Bluetooth needed)")
+    parser.add_argument("--vectors", action="store_true",
+                        help="print the frames as Monkey C byte arrays")
+    parser.add_argument("--advertise", action="store_true",
+                        help="actually broadcast (Linux + BlueZ + root)")
     parser.add_argument("--replay", metavar="CAP.TSV",
-                        help="replay a tshark TSV capture with its original timing")
-    parser.add_argument("--synthetic", action="store_true",
-                        help="send generated reps unattended")
-    parser.add_argument("--reps", type=int, default=10, help="reps to send (--synthetic)")
-    parser.add_argument("--course", default="S:0;L:30;L:60;F:100",
-                        help="course to generate reps over (--synthetic)")
-    parser.add_argument("--speed", type=float, default=8.0,
-                        help="metres per second (--synthetic)")
+                        help="replay advertisements from a capture")
+    parser.add_argument("--reps", type=int, default=1, help="reps to generate")
+    parser.add_argument("--course", default=DEFAULT_COURSE,
+                        help="course spec, e.g. %s" % DEFAULT_COURSE)
+    parser.add_argument("--speed", type=float, default=8.0, help="m/s")
+    parser.add_argument("--jitter", type=float, default=1.0,
+                        help="per-rep speed variation; 0 for identical reps")
     parser.add_argument("--rest", type=float, default=3.0,
-                        help="seconds between reps (--synthetic)")
-    parser.add_argument("--mtu", type=int, default=20,
-                        help="bytes per notification; 20 is the BLE limit")
+                        help="seconds between reps")
+    parser.add_argument("--chip", default="%s-%d" % (DEFAULT_PREFIX, DEFAULT_CHIP_ID),
+                        help="chip id to advertise as, e.g. BC-9636")
+    parser.add_argument("--rounding", choices=["round", "truncate"], default="round",
+                        help="how to convert ticks for display (see #6)")
     return parser
+
+
+def parse_chip(text):
+    """"BC-9636" -> ("BC", 9636)."""
+    prefix, _, digits = text.partition("-")
+    if len(prefix) != 2 or not digits.isdigit():
+        raise ValueError("a chip id is two letters and a number, e.g. BC-9636: %r"
+                         % (text,))
+    return prefix.upper(), int(digits)
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
-    asyncio.run(serve(args))
+    prefix, chip_id = parse_chip(args.chip)
+    course = parse_course(args.course)
+    session = synthetic_session(course, args.reps, args.speed, args.jitter,
+                                args.rest, prefix, chip_id)
+
+    if args.vectors:
+        print(monkeyc_vectors(session))
+        return 0
+    if args.advertise:
+        advertise(session, rest_s=args.rest)
+        return 0
+    if args.replay:
+        with open(args.replay, encoding="utf-8") as handle:
+            schedule = replay_schedule(parse_capture(handle))
+        print("%d frames to replay; --advertise is #27" % len(schedule))
+        return 0
+
+    print_session(session, args.rounding)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -1,20 +1,33 @@
 #!/usr/bin/env python3
-"""Diff BLE notification captures against known Freelap split times.
+"""Read a capture of FxChip advertisements and say what the chip reported.
 
-Input: a tshark/Wireshark export with one notification per line:
-    tshark -r btsnoop_hci.log -Y "btatt.opcode == 0x1b" \
-        -T fields -e frame.time_epoch -e btatt.handle -e btatt.value > cap.tsv
+Input: a capture export with one advertisement per line,
+
+    <epoch>\t<anything>\t<hex payload>
+
+which is what tshark produces, what `tools/fake_chip.py --replay` reads, and
+what the watch's own capture dump prints.
 
 Usage:
-    decode_capture.py cap.tsv 3.42 6.87
-    (the numbers are the split times MyFreelap displayed, in seconds)
+    decode_capture.py adv.tsv                decode every Freelap frame
+    decode_capture.py adv.tsv 3.42 6.87      also hunt for these times
 
-For every packet it prints hex, arrival delta, and every offset where one of
-the given times appears encoded as u16/u32, LE/BE, in ms, 1/100 s, 1/1000 s
-or us. Also flags 20-byte packets (likely fragments).
+With no times given it decodes each frame at the documented offsets and prints
+the rep -- which is what #6 needs: the values MyFreelap displayed have to come
+back out of the bytes.
+
+Given times, it also brute-forces every offset where each one could be encoded
+as u16/u24/u32, LE/BE, in several units. That search is what this tool was
+originally *for*, back when the layout was unknown. It is kept because it is
+the honest way to investigate a frame that does not decode: rather than
+assuming our offsets are right and the chip is odd, it asks where the number
+actually is. If it ever finds a time at an offset the decoder does not use,
+the decoder is wrong.
 """
 import struct
 import sys
+
+import freelap_frame as ff
 
 UNITS = {"us": 1_000_000, "ms": 1000, "1/100s": 100, "1/10ms": 10_000}
 FMTS = {"u16le": "<H", "u16be": ">H", "u32le": "<I", "u32be": ">I", "u24le": None}
@@ -48,29 +61,61 @@ def matches(data, seconds):
     return hits
 
 
-def main():
-    if len(sys.argv) < 2:
+def decode_line(data):
+    """One capture payload -> a human-readable rep, or None if not ours."""
+    advertisement = ff.decode_advertisement(data)
+    if advertisement is None:
+        return None
+    return "%s lap#%-3d block=%-10d split=%s" % (
+        advertisement.chip, advertisement.lap_number, advertisement.block,
+        ff.format_time(ff.to_centiseconds(advertisement.split())))
+
+
+def read_rows(handle):
+    """[(epoch, payload), ...], skipping the rows a real export is full of."""
+    rows = []
+    for line in handle:
+        parts = line.rstrip("\n").split("\t")
+        if len(parts) < 3 or not parts[2].strip():
+            continue
+        try:
+            when = float(parts[0])
+            data = bytes.fromhex(parts[2].replace(":", "").replace(" ", "").strip())
+        except ValueError:
+            continue
+        rows.append((when, data))
+    return rows
+
+
+def main(argv=None):
+    argv = sys.argv if argv is None else argv
+    if len(argv) < 2:
         print(__doc__)
-        return
-    path = sys.argv[1]
-    times = [float(x) for x in sys.argv[2:]]
-    prev_t = None
-    with open(path) as f:
-        for line in f:
-            parts = line.rstrip("\n").split("\t")
-            if len(parts) < 3 or not parts[2]:
-                continue
-            t = float(parts[0])
-            handle = parts[1]
-            data = bytes.fromhex(parts[2].replace(":", ""))
-            delta = "" if prev_t is None else f"+{(t - prev_t) * 1000:.0f}ms"
-            prev_t = t
-            frag = " FRAG?" if len(data) == 20 else ""
-            print(f"{t:.3f} {delta:>9} h={handle} len={len(data):2d}{frag}  {data.hex(' ')}")
-            for secs in times:
-                for fname, uname, off in matches(data, secs):
-                    print(f"        {secs}s as {fname} {uname:>6} at offset {off}")
+        return 0
+    times = [float(x) for x in argv[2:]]
+
+    with open(argv[1], encoding="utf-8") as handle:
+        rows = read_rows(handle)
+
+    previous = None
+    ours = 0
+    for when, data in rows:
+        delta = "" if previous is None else "+%.0fms" % ((when - previous) * 1000)
+        previous = when
+        decoded = decode_line(data)
+        if decoded is not None:
+            ours += 1
+        print("%.3f %9s len=%2d  %s" % (when, delta, len(data), data.hex(" ")))
+        if decoded is not None:
+            print("        %s" % decoded)
+        for seconds in times:
+            for fname, uname, off in matches(data, seconds):
+                print("        %ss as %s %6s at offset %d" % (seconds, fname, uname, off))
+
+    print("")
+    print("%d frame(s), %d from a Freelap chip" % (len(rows), ours))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
