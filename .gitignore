@@ -24,4 +24,8 @@ __pycache__/
 # the only external ground truth we have for the decoder, so the tests that use
 # them skip rather than fail when they are absent (see
 # tools/tests/test_freelap_frame.py). Not ours to publish - see #8.
-tools/tests/data/vendor_*.json
+# ...and wherever the vendor folder itself lands. The confidential fixture
+# has already been found sitting one directory move away from a path-specific
+# rule; a name-based rule does not care where it is.
+vendor_*.json
+freelap-vendor-docs/
