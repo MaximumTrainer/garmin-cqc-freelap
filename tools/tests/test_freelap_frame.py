@@ -315,10 +315,11 @@ def test_a_low_chip_id_is_padded_to_four_digits():
     advertisement = ff.decode_advertisement(
         ff.build_advertisement("AA", 42, 0, 1, 2, 3))
 
-    # Whether the chip's case actually reads AA-0042 is an open question on
-    # #63. Padding is the assumption; this test is where it is recorded, so
-    # that hardware contradicting it fails here rather than confusing an
-    # athlete whose watch disagrees with the thing in their hand.
+    # Freelap's FAQ gives the format as "2 letters - 4 digits" and the chip's
+    # own local name is a fixed-width XX-XXXX, so this is sourced rather than
+    # assumed. Still worth a test: hardware contradicting it should fail here
+    # rather than confuse an athlete whose watch disagrees with the thing in
+    # their hand.
     assert advertisement.chip == "AA-0042"
 
 

@@ -42,10 +42,11 @@ function testTheSameChipTypedSeveralWaysIsTheSameChip(logger as Test.Logger) as 
 
 (:test)
 function testALowNumberedChipIsPaddedToFourDigits(logger as Test.Logger) as Lang.Boolean {
-    // The assumption is that a chip numbered 42 is printed AA-0042 and shown
-    // that way by MyFreelap. If hardware ever contradicts this, it should fail
-    // here rather than confuse an athlete whose watch disagrees with the thing
-    // in their hand - the open question is on #63.
+    // Freelap give the format publicly as "2 letters - 4 digits", and the
+    // chip's own Bluetooth local name is a fixed-width XX-XXXX, so a chip
+    // numbered 42 is printed AA-0042. If hardware ever contradicts that it
+    // should fail here rather than confuse an athlete whose watch disagrees
+    // with the thing in their hand (#63).
     Test.assertEqualMessage(Settings.normaliseChipId("AA-42"), "AA-0042", "unpadded");
     Test.assertEqualMessage(Settings.normaliseChipId("AA-0042"), "AA-0042", "already padded");
     Test.assertEqualMessage(Settings.normaliseChipId("AA-0"), "AA-0000", "zero");
@@ -54,9 +55,10 @@ function testALowNumberedChipIsPaddedToFourDigits(logger as Test.Logger) as Lang
 
 (:test)
 function testAnIdWiderThanFourDigitsIsAcceptedNotRefused(logger as Test.Logger) as Lang.Boolean {
-    // The id is a 16-bit field, which holds more than four digits can show.
-    // Refusing five digits would lock out a real chip on the strength of a
-    // printing convention (#63).
+    // The id is a 16-bit field, which holds far more than four digits can
+    // show, so a five-digit id is probably never issued. Accepted anyway:
+    // refusing a real chip on the strength of a printing convention would be
+    // a much worse failure than accepting one that does not exist (#63).
     Test.assertEqualMessage(Settings.normaliseChipId("BC-65535"), "BC-65535", "the widest id");
     Test.assertEqualMessage(Settings.normaliseChipId("BC-65536"), "", "past 16 bits");
     return true;

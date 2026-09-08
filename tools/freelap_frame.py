@@ -88,8 +88,11 @@ class Advertisement:
         """The identity printed on the chip's face, e.g. 'BC-9636'.
 
         This is what the athlete types into Garmin Connect (#64) and what
-        MyFreelap displays, so it has to render identically to both. How ids
-        below 1000 are printed is an open question on #63.
+        MyFreelap displays, so it has to render identically to both.
+
+        Four digits, zero-padded. Freelap give the format publicly as
+        "2 letters - 4 digits", and the chip's Bluetooth local name uses the
+        same fixed-width shape, so an id of 42 reads AA-0042.
         """
         return "%s-%04d" % (self.prefix, self.chip_id)
 
