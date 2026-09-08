@@ -64,10 +64,15 @@ module Settings {
     // the watch to a chip nobody owns and record nothing all session.
     //
     // Rendered "%04d" to match the id on the chip's face and the one MyFreelap
-    // shows. Whether a chip numbered below 1000 is really printed with leading
-    // zeros is an open question (#63); padding is the assumption, and ids of
-    // more than four digits are accepted rather than rejected because the
-    // field in the frame is 16 bits and holds more than four digits can show.
+    // shows. Freelap document the format publicly - "2 letters - 4 digits" in
+    // their FAQ - and the chip's own Bluetooth local name is a fixed-width
+    // XX-XXXX, which cannot express anything else, so 42 is "AA-0042".
+    //
+    // Ids of more than four digits are still accepted rather than rejected.
+    // The field in the frame is 16 bits and holds far more than four digits
+    // can show, so such an id is probably never issued - but refusing a real
+    // chip because it did not match a printing convention would be a much
+    // worse failure than accepting one that does not exist (#63).
     function normaliseChipId(raw) as Lang.String {
         if (raw == null || !(raw instanceof Lang.String)) { return ""; }
 

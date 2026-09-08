@@ -256,7 +256,11 @@ class Advertisement {
     // The identity printed on the chip's face, e.g. "BC-9636". This is what
     // the athlete types into Garmin Connect (#64) and what MyFreelap shows, so
     // it must render identically to both - Settings.normaliseChipId produces
-    // the same string from what they type.
+    // the same string from what they type, and a test asserts they agree.
+    //
+    // Four digits, zero-padded: Freelap's FAQ gives the format as "2 letters -
+    // 4 digits", and the chip's Bluetooth local name uses the same fixed-width
+    // shape.
     function chip() as Lang.String {
         return prefix + "-" + chipId.format("%04d");
     }
