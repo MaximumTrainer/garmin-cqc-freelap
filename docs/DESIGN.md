@@ -39,6 +39,9 @@ Four modules, one direction of data flow:
 
 ## 3. Timing model (why "microseconds" needs care)
 
+> **Correction pending (#14).** `TICK_US = 1000` was a placeholder for a protocol we had guessed at. The real conversion is specified in Freelap's document: raw counts divided by a fixed, non-decimal divisor, giving hundredths of a second. The claim below that times reach the FIT file with nothing rounded on the way therefore needs restating honestly once #6 confirms the divisor — the chip's resolution is what it is, and a derived microsecond figure is not a measurement.
+
+
 There are three clocks:
 
 | Clock | Resolution | Who owns it | Notes |
@@ -216,6 +219,20 @@ With `lapPerCrossing` on, every split arms a lap of its own carrying that split'
 
 ## 6. BLE layer
 
+> **Superseded. Everything in this section describes a connection to the chip, and there is no connection.**
+>
+> Freelap have since shared the FxChip BLE broadcast frame specification (see #8). The chip is **broadcast-only**: it advertises an advertisement plus a scan response and never accepts a GATT connection. There are no services, no characteristics, no CCCD subscription, no handshake writes, no notifications and no fragmentation. The state machine, the backoff, the `PacketAssembler` and the profile below are all solving problems that do not exist.
+>
+> Two things below survive the change, and one of them matters more than it did:
+>
+> * **Choosing between chips** is still needed, and is now *more* important. A scanning watch passively hears every chip on the track, with no connection to make a wrong choice visible. But the identity should be the chip's real prefix and id from the frame, not the advertised name (#11) — the name is only sent in a scan response, which the watch may not even be able to read (#60).
+> * **The bounded advertising window** replaces link loss as the way reps get lost. A missed window is a permanently missed rep; there is nothing to reconnect to (#9).
+>
+> This section is rewritten when the code is, in #61. It is left standing rather than deleted so that the reasoning behind what gets removed is still legible — several of the failure modes described below were real and were found the hard way, and the arguments for the *shape* of the code (owning buffers rather than module state, testing the failure explicitly) outlived the protocol that motivated them.
+>
+> The specification itself is confidential and is not in this repository. `docs/PROTOCOL.md` will cite it rather than reproduce it (#6).
+
+
 Constraints from the CIQ API: max 3 registered profiles, one delegate, pairing does not persist across app launches, writes limited to 20 bytes, notifications enabled by writing `0x0001` to the CCCD descriptor. Scan results expose device name, RSSI, service UUIDs, manufacturer-specific data and (4.x) raw advertising bytes.
 
 State machine:
@@ -366,6 +383,9 @@ The unit-test harness cannot produce an activity file at all: it tears the app d
 
 
 ## 8. Reverse-engineering plan (see `docs/REVERSE-ENGINEERING.md`)
+
+> **Largely answered (#8).** Freelap supplied the specification, so the work is confirming a documented frame against a real chip (#4, #5, #6) rather than deriving an unknown one. `docs/REVERSE-ENGINEERING.md` still describes sniffing a connection and needs rewriting with #61.
+
 
 Short version: capture the phone ↔ chip traffic with Android's HCI snoop log or an nRF52840 dongle + Wireshark while doing a scripted set of runs (known distances, count splits, note times shown in MyFreelap), then diff packets against the app's displayed values to identify the timestamp unit, packet framing, transmitter code field and any handshake. The watch's capture mode doubles as a field logger once the service UUID is known. `tools/decode_capture.py` is a scaffold for the diffing.
 
