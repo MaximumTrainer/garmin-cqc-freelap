@@ -14,6 +14,40 @@ class BroadcastRep {
     var totalTicks as Lang.Number = 0;
 
     function initialize() {}
+
+    // Microseconds per tick is 1000000/1024 = 15625/16. Exact when the tick
+    // count is a multiple of 16; otherwise the sub-microsecond residue is
+    // truncated, as docs/EXPORT.md records. In a Long, because ticks * 15625
+    // overflows a Number long before the counters do. tools/scenarios.py does
+    // this identical integer arithmetic, which is what lets the scenario suite
+    // assert the FIT values byte for byte rather than approximately.
+    static function ticksToUs(ticks as Lang.Number) as Lang.Long {
+        return ticks.toLong() * 15625l / 16l;
+    }
+
+    // The rep as the split engine consumes it: one Crossing per transmitter,
+    // in chip-time order, START at the origin.
+    //
+    // The frame carries no transmitter codes - a lap number and an ordered
+    // array of times, nothing that says which transmitter produced one - so
+    // matching is ordinal: the first crossing is the START, the last is the
+    // FINISH, everything between is a LAP. That is the physical model behind
+    // the course spec and the LED colours the chip shows, applied by position
+    // (#13). A missed transmitter therefore misattributes every later split;
+    // the count of crossings against the configured course is the only check
+    // available, and Course.matchCrossing surfaces a mismatch as an unmatched
+    // index rather than a guess.
+    function toCrossings() as Lang.Array {
+        var out = [] as Lang.Array;
+        if (cumulative.size() == 0) { return out; }     // no finish, no rep
+        out.add(new Crossing(0l, TxCode.START, chip));
+        var last = cumulative.size() - 1;
+        for (var i = 0; i <= last; i++) {
+            var code = (i == last) ? TxCode.FINISH : TxCode.LAP;
+            out.add(new Crossing(ticksToUs(cumulative[i]), code, chip));
+        }
+        return out;
+    }
 }
 
 // Which broadcasts are reps, and whose (issues #9 and #63).

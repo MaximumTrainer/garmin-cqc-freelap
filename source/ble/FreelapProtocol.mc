@@ -16,14 +16,8 @@ using Toybox.System;
 // ============================================================================
 
 // A decoded transmitter crossing in chip time.
-class Crossing {
-    var timeUs = 0l;   // chip timestamp in microseconds (Long; may be absolute chip uptime)
-    var code = 0;      // TxCode
-    var chipId = "";
-    function initialize(t as Lang.Numeric, c as Lang.Number, id as Lang.String) {
-        timeUs = t; code = c; chipId = id;
-    }
-}
+// Crossing lives in source/model/Crossing.mc: it is the split engine's input,
+// and it outlives this file (#61).
 
 module FreelapProtocol {
 
