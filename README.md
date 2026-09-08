@@ -87,6 +87,7 @@ docs/EXPORT.md                      getting the splits out, and what each column
 docs/screenshots/                   the main view at each target resolution
 captures/                           BLE captures the protocol was derived from
 docs/REVERSE-ENGINEERING.md         confirming the frame against a real chip
+docs/TESTING.md                     simulator, nRF52 radio, and on-watch verification
 ```
 
 ## Website
@@ -136,16 +137,24 @@ monkeydo bin/freelap-test.prg fr265 -t
 ```
 
 On Windows the SDK's `monkeydo.bat` takes `/t`, not `-t`. Or use *Monkey C: Run
-Tests* in VS Code. `source-test/CourseTest.mc` still has one deliberately
-failing test (`testCourseRejectsNonMonotonicDistances`) marking the next piece
-of work — course validation, issue #13. `AGENTS.md` describes the outside-in
-TDD loop this project follows.
+Tests* in VS Code. The suite is green; `AGENTS.md` describes the outside-in TDD
+loop this project follows.
+
+The **test** build only fits on API 5.x devices — on the 240 px products it
+exceeds Monkey C's 253-`globals` cap. That is the harness, not the app: release
+builds are clean for every installed product. `fr265` and `fenix7` cover a large
+and a small round screen.
+
+**[`docs/TESTING.md`](docs/TESTING.md) is the guide to verifying against real
+Freelap hardware** — including how to give the simulator a real Bluetooth radio
+with an nRF52 dongle, which is how to answer the project's open question
+without owning a watch.
 
 ## First run
 
-1. Settings (Garmin Connect app → the watch → Connect IQ apps → Freelap): enter your course, e.g. `S:0;L:30;L:60;F:100`, enable *Capture mode*.
-2. Open the app; it scans for the chip. With the placeholder UUIDs it will only find `tools/fake_chip.py` or a chip whose name starts with `FxChip`/`Freelap`.
-3. Press START, run a rep. In capture mode the last raw packet is shown on screen and the last 60 packets are kept in app storage (written at exit).
+1. Settings (Garmin Connect app → the watch → Connect IQ apps → Freelap): enter the **chip id printed on your FxChip** (two letters and four digits, e.g. `BC-9636`) and your course, e.g. `S:0;L:30;L:60;F:100`. Enable *Capture mode* if you are investigating the protocol. Without a chip id the app records nothing and says so — it will not guess.
+2. Open the app; it listens. There is no pairing: the chip broadcasts, and the app accepts frames from the id you bound and ignores every other chip in range.
+3. Wake the chip (hold it vertically, shake it horizontally), press START and run a rep. A rep is broadcast when you cross a transmitter set to **Finish**. In capture mode the last raw frame is shown on screen and recent frames are kept in app storage.
 4. Controls: START = start / pause / resume. BACK = end the current rep while recording,
    or open Save/Discard while paused. On a touch screen, tapping the upper half is START and
    the lower half is BACK. Ending a rep with no crossings shows *No splits* and writes nothing.
