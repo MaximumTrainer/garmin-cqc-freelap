@@ -49,10 +49,28 @@ FRAME_TYPE = 0x58
 # The chip counts in its own ticks; this converts them to hundredths of a
 # second. It is not a power of ten, so converting early and adding up the
 # results accumulates error -- do the subtraction in ticks and convert once.
+#
+# The tick is 1/1024 s, but do not mistake that for the chip's accuracy.
+# Freelap publish that as **1/100 s** in both the FxChip BLE and FxMotion
+# manuals, which is also what MyFreelap displays. The finer tick is how the
+# number is carried, not how well it is measured.
 TICKS_PER_CENTISECOND = 10.24
 
 # 27 payload bytes after the company identifier, three per lap.
+#
+# Freelap's manual confirms this from the other direction: "Your FxChip BLE has
+# a memory of maximum 10 intermediate times. This means that your track must
+# contain a maximum of 11 transmitters." Eleven transmitters is a start, nine
+# intermediate crossings and a finish -- nine timestamps, exactly what fits --
+# and the ten legs between them are those ten intermediate times. Two
+# independent sources agreeing on the same number is the best evidence there is
+# that this field is being read correctly.
 MAX_LAPS = 9
+
+# Limits the chip imposes, from Freelap's published documentation.
+MAX_TRANSMITTERS = 11
+MIN_GAP_M = 10.0
+MIN_LEG_SECONDS = 0.7
 
 # The advertisement's manufacturer payload, company identifier included.
 AD_PAYLOAD_LEN = 26

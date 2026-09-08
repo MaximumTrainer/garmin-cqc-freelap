@@ -11,12 +11,14 @@ Garmin Connect **rounds floats in its UI**. It shows `uint32` fields as-is, whic
 
 ### What "precision" means here
 
-The durations are carried in **microseconds, which is finer than the chip can measure**. The FxChip counts in ticks of 1/1024 s — just under a millisecond — so a microsecond field is a container, not a claim. What the chip actually resolves is about 0.98 ms, which is still around ten times finer than the hundredths MyFreelap displays.
+The durations are carried in **microseconds, which is far finer than the chip can measure**. Freelap publish the FxChip BLE's accuracy as **1/100 s**, and that is what MyFreelap displays too. A microsecond field is a container, not a claim.
+
+The chip's internal tick is 1/1024 s, which is why the conversion factor is 10.24. That is how the value is carried, not how well it is measured — do not read the tick as the accuracy.
 
 Two consequences worth knowing before you compare numbers with anything:
 
 * the app subtracts in the chip's own ticks and converts once, because the tick is not a decimal fraction of a second and converting each leg before adding them up accumulates error;
-* converting a tick count to microseconds is exact only when that count is a multiple of 16. The residue is under a microsecond and far below what the chip can measure, but it is not nothing, and "nothing is rounded on the way" — which this document used to say — was not true.
+* converting a tick count to microseconds is exact only when that count is a multiple of 16. The residue is under a microsecond — two orders of magnitude below the chip's stated accuracy — but it is not nothing, and "nothing is rounded on the way", which this document used to say, was not true.
 
 ## From the FIT file
 

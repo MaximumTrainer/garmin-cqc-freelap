@@ -27,6 +27,26 @@ class Course {
     // The course used when the setting is empty or cannot be parsed.
     static const DEFAULT_SPEC = "S:0;F:30";
 
+    // Limits the chip imposes, from Freelap's published documentation rather
+    // than anything we worked out:
+    //
+    //   "Your FxChip BLE has a memory of maximum 10 intermediate times. This
+    //    means that your track must contain a maximum of 11 transmitters."
+    //   "Respect a minimum of 10 meters or 0.7 seconds between 2 transmitters."
+    //
+    // Both produce warnings, not rejections, and that distinction matters. A
+    // course breaking either is not unusable - it is quietly incomplete, which
+    // is worse. Someone who sets out twelve transmitters gets splits for
+    // eleven and no sign anything is missing, and every number looks right.
+    // Throwing their course away and running the default instead would record
+    // the session against distances they never set, so the course stands and
+    // the screen says what is wrong with it.
+    //
+    // Only the distance rule is checkable here; 0.7 s depends on how fast the
+    // athlete runs, which a course definition does not know.
+    static const MAX_TRANSMITTERS = 11;
+    static const MIN_GAP_M = 10;
+
     var codes = [] as Lang.Array<Lang.Number>;      // TxCode per transmitter
     var distances = [] as Lang.Array<Lang.Float>;   // cumulative metres
     var name = "";
@@ -110,6 +130,15 @@ class Course {
             openEnded = true;
             addWarning("no FINISH transmitter");
         }
+
+        if (codes.size() > MAX_TRANSMITTERS) {
+            addWarning("max 11 transmitters");
+        }
+
+        var tooClose = closestGapM();
+        if (tooClose >= 0 && tooClose < MIN_GAP_M) {
+            addWarning("min 10 m apart");
+        }
     }
 
     // The one line to put on the screen after a settings change: the reason
@@ -121,6 +150,18 @@ class Course {
     }
 
     function size() as Lang.Number { return codes.size(); }
+
+    // The smallest distance between consecutive transmitters, or -1 when there
+    // are not two of them to compare.
+    function closestGapM() as Lang.Float {
+        if (distances.size() < 2) { return -1.0; }
+        var smallest = distances[1] - distances[0];
+        for (var i = 2; i < distances.size(); i++) {
+            var gap = distances[i] - distances[i - 1];
+            if (gap < smallest) { smallest = gap; }
+        }
+        return smallest;
+    }
 
     function totalDistance() as Lang.Float {
         return codes.size() > 0 ? distances[codes.size() - 1] : 0.0;

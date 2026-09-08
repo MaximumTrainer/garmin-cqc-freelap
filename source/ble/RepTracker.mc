@@ -99,10 +99,16 @@ class RepTracker {
         return out;
     }
 
-    // Reps the watch never heard. The advertising window is bounded and there
-    // is no reconnect, so a missed one is gone for good - an athlete who is
-    // told can run it again, one who is not finds a hole in the data that
-    // evening. Which is why this is counted and surfaced rather than absorbed.
+    // Reps the watch never heard.
+    //
+    // Not necessarily lost: Freelap's manual says the chip keeps its latest
+    // time in memory and re-sends it when shaken, until it sleeps, is charged,
+    // or another rep replaces it. So the most recent miss can be asked for
+    // again - which makes surfacing this far more useful than it looked. The
+    // athlete can act on it, rather than only finding a hole that evening.
+    //
+    // Older misses are still gone; only one rep is held. Counted and surfaced
+    // either way, never absorbed.
     hidden function countTheGapBefore(lapNumber as Lang.Number) as Void {
         if (lastLap == null) {
             // The chip has been counting since it was last charged, so the

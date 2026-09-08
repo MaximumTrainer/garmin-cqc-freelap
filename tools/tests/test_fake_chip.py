@@ -301,3 +301,61 @@ def test_advertising_says_what_it_needs_rather_than_failing_obscurely():
         fake_chip.advertise(session)
 
     assert str(caught.value)
+
+
+# ---------------------------------------------------------------------------
+# Limits the real chip imposes
+# ---------------------------------------------------------------------------
+
+def eleven_transmitters():
+    spec = ";".join(["S:0"] + ["L:%d" % (i * 20) for i in range(1, 10)] + ["F:200"])
+    return fake_chip.parse_course(spec)
+
+
+def test_the_documented_maximum_number_of_transmitters_is_allowed():
+    course = eleven_transmitters()
+    assert len(course) == ff.MAX_TRANSMITTERS
+
+    advertisement, scan_response = fake_chip.rep_frames(course, speed_mps=8.0,
+                                                        jitter=0.0)
+
+    # Nine intermediate crossings is exactly what the scan response holds, and
+    # the ten legs between eleven transmitters are the "10 intermediate times"
+    # Freelap's manual quotes. The two sources agreeing is the point.
+    laps = ff.decode_scan_response(scan_response)
+    assert len(laps) == ff.MAX_LAPS
+    assert len(ff.segments(ff.decode_advertisement(advertisement), laps)) == 10
+
+
+def test_a_twelfth_transmitter_is_refused():
+    spec = ";".join(["S:0"] + ["L:%d" % (i * 20) for i in range(1, 11)] + ["F:220"])
+
+    with pytest.raises(ValueError, match="transmitters"):
+        fake_chip.rep_frames(fake_chip.parse_course(spec), jitter=0.0)
+
+
+def test_transmitters_closer_than_the_minimum_are_refused():
+    course = fake_chip.parse_course("S:0;L:5;F:30")
+
+    # Below ten metres the chip may not detect the second transmitter at all,
+    # so a fake that happily produced a split there would be testing the
+    # decoder against something hardware cannot send.
+    with pytest.raises(ValueError, match="minimum is 10"):
+        fake_chip.rep_frames(course, jitter=0.0)
+
+
+def test_a_leg_the_athlete_covers_too_quickly_is_refused():
+    course = fake_chip.parse_course("S:0;L:10;F:40")
+
+    # Ten metres is a legal gap, but not at 20 m/s: the chip needs 0.7 s
+    # between transmitters, and that depends on the athlete, not the course.
+    with pytest.raises(ValueError, match="0.7"):
+        fake_chip.rep_frames(course, speed_mps=20.0, jitter=0.0)
+
+
+def test_the_same_leg_at_a_realistic_speed_is_fine():
+    course = fake_chip.parse_course("S:0;L:10;F:40")
+
+    advertisement, _ = fake_chip.rep_frames(course, speed_mps=8.0, jitter=0.0)
+
+    assert ff.decode_advertisement(advertisement) is not None
