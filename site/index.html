@@ -23,13 +23,18 @@
 <div class="status" role="note">
     <p><strong>Status: in development. This has never been run against a real
     Freelap chip.</strong></p>
-    <p>The packet format the app decodes is an educated guess and is
-    <a href="https://github.com/MaximumTrainer/garmin-freelap/issues/7">still
-    unconfirmed</a>; nobody has yet
+    <p>Freelap have since provided the broadcast frame specification, and the
+    app decodes it — checked against the worked example in that document. But
+    nobody has yet
     <a href="https://github.com/MaximumTrainer/garmin-freelap/issues/25">timed
-    twenty reps on a track against MyFreelap</a>. Everything below describes what
-    is built and tested against simulated data. Do not expect it to work with a
-    chip in your hand today.</p>
+    twenty reps on a track against MyFreelap</a>, and one question is still
+    open that decides what this can be: whether a Garmin watch can read the
+    part of the broadcast carrying the
+    <a href="https://github.com/MaximumTrainer/garmin-freelap/issues/60">splits
+    between transmitters</a>. If it cannot, the app records a total per rep and
+    nothing finer. Everything below describes what is built and tested against
+    generated frames. Do not expect it to work with a chip in your hand
+    today.</p>
 </div>
 
 <h2>What it does</h2>
@@ -126,10 +131,12 @@ test instructions</a> are in the repository, and
 design document</a> explains how the whole thing fits together — the timing
 model, the FIT layout and the decisions behind them.</p>
 
-<p>If you have an FxChip and a packet sniffer, the most useful thing anyone
-could do right now is
-<a href="https://github.com/MaximumTrainer/garmin-freelap/blob/main/docs/REVERSE-ENGINEERING.md">work
-out the real protocol</a>. Everything downstream of it is built and waiting.</p>
+<p>If you have an FxChip, a transmitter and a Garmin watch, the most useful
+thing anyone could do right now is
+<a href="https://github.com/MaximumTrainer/garmin-freelap/blob/main/docs/REVERSE-ENGINEERING.md">point
+them at each other and record what happens</a> — above all, whether the watch
+can see the splits between transmitters at all. Everything downstream of that
+is built and waiting.</p>
 
 <h2>Questions, bugs, and helping out</h2>
 

@@ -10,7 +10,7 @@ Read `docs/DESIGN.md` first. The short version: the watch cannot sense Freelap's
 
 ## Status
 
-Skeleton, and it builds: `monkeyc -l 1` is clean for every `manifest.xml` product whose device definition is installed (19 of 24, API 3.2 through 6.0), the app launches in the simulator, and `monkeydo /t` runs the unit tests. **The packet format in `source/ble/FreelapProtocol.mc` is still a placeholder** until you have sniffed the real chip (`docs/REVERSE-ENGINEERING.md`). The rest of the pipeline (BLE state machine, split engine, FIT fields, UI) is complete enough to test with `tools/fake_chip.py`.
+Skeleton, and it builds: `monkeyc -l 1` is clean for every `manifest.xml` product whose device definition is installed (19 of 24, API 3.2 through 6.0), the app launches in the simulator, and `monkeydo /t` runs the unit tests. Freelap have provided the broadcast frame specification, and `source/ble/BroadcastFrame.mc` decodes it — the chip broadcasts and never accepts a connection, so there is no pairing and nothing to subscribe to. **It has never been run against a real chip**, and one question decides what this can be: whether a watch can read the part of the broadcast carrying the splits between transmitters (issue #60). `source/ble/FreelapProtocol.mc` and `PacketAssembler.mc` still implement the old connection-oriented guess and are retired in #61. The rest of the pipeline (split engine, FIT fields, UI) is testable today with `tools/fake_chip.py --print`, which needs no radio.
 
 ## Layout
 
@@ -41,7 +41,7 @@ docs/EXPORT.md                      getting the splits out, and what each column
 docs/FREELAP-ENQUIRY.md             drafted letter asking Freelap for the spec
 docs/screenshots/                   the main view at each target resolution
 captures/                           BLE captures the protocol was derived from
-docs/REVERSE-ENGINEERING.md         sniffing plan
+docs/REVERSE-ENGINEERING.md         confirming the frame against a real chip
 ```
 
 ## Website

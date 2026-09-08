@@ -53,9 +53,14 @@ def test_the_status_notice_comes_before_any_other_section(html):
 def test_the_status_notice_links_to_the_issues_that_would_change_it(html):
     status = html[html.index('class="status"'):html.index("<h2")]
 
-    # When #7 and #25 pass, this notice is what has to be rewritten. Linking
-    # them makes that findable rather than folklore.
-    assert "/issues/7" in status
+    # When #60 and #25 are answered, this notice is what has to be rewritten.
+    # Linking them makes that findable rather than folklore.
+    #
+    # It was #7 and #25 while the protocol was unknown. #7's decoder is built
+    # and the specification arrived, so the honest blocker moved: what is
+    # unresolved now is whether a watch can read the scan response at all,
+    # which decides whether this records splits or only rep totals.
+    assert "/issues/60" in status
     assert "/issues/25" in status
 
 
