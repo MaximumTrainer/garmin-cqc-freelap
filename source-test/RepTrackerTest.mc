@@ -413,3 +413,108 @@ function testResetClearsTheIdleCount(logger as Test.Logger) as Lang.Boolean {
     Test.assertEqualMessage(tracker.idleFrames, 0, "cleared");
     return true;
 }
+
+// ---------------------------------------------------------------------------
+// What makes two frames the same rep (issue #80)
+// ---------------------------------------------------------------------------
+//
+// Dedup used to key on the lap-number byte, whose meaning no vendor document
+// defines - it is 0 in the only worked example - and which the fake chip
+// happened to increment for the same unfounded reason, so the two agreed with
+// each other and every test passed. Every earlier test in this file built its
+// frames with the SAME counters and a varying lap number, which proves dedup
+// by lap number and nothing about whether that is the right key.
+//
+// The finish timestamp, block, is monotonic chip uptime: identical across
+// every repeat of a rep, different for every new one. It needs no assumption.
+// These tests hold the lap number still and move the counters, which is the
+// case the old suite could not see.
+
+(:test)
+function testTwoRepsWithTheSameLapNumberAreTwoReps(logger as Test.Logger) as Lang.Boolean {
+    var tracker = new RepTracker(MINE, BroadcastFrame.MASK_WIDE);
+
+    var first = tracker.onFrame(TestSupport.advertisement(MINE, 0, 3585, 3585, 13825), []);
+    var second = tracker.onFrame(TestSupport.advertisement(MINE, 0, 20000, 20000, 30000), []);
+
+    // If the chip's lap number never increments, this is every session after
+    // its first rep. Keyed on the byte, the second rep vanishes as a repeat.
+    Test.assertMessage(first != null && second != null, "both reps kept");
+    Test.assertEqualMessage(tracker.repsSeen, 2, "two reps");
+    return true;
+}
+
+(:test)
+function testTheSameFinishWithDifferentLapNumbersIsOneRep(logger as Test.Logger) as Lang.Boolean {
+    var tracker = new RepTracker(MINE, BroadcastFrame.MASK_WIDE);
+
+    tracker.onFrame(TestSupport.advertisement(MINE, 0, 3585, 3585, 13825), []);
+    var again = tracker.onFrame(TestSupport.advertisement(MINE, 1, 3585, 3585, 13825), []);
+
+    // Same finish timestamp means the same crossing of the same line. Whatever
+    // the lap-number byte is doing, the athlete did not run this twice.
+    Test.assertMessage(again == null, "one crossing, one rep");
+    Test.assertEqualMessage(tracker.repsSeen, 1, "counted once");
+    return true;
+}
+
+(:test)
+function testFortyRepeatsWithAConstantLapNumberAreOneRep(logger as Test.Logger) as Lang.Boolean {
+    var tracker = new RepTracker(MINE, BroadcastFrame.MASK_WIDE);
+    var accepted = 0;
+
+    for (var i = 0; i < 40; i++) {
+        if (tracker.onFrame(TestSupport.advertisement(MINE, 0, 3585, 3585, 13825), []) != null) {
+            accepted++;
+        }
+    }
+
+    Test.assertEqualMessage(accepted, 1, "the window, keyed on the finish");
+    return true;
+}
+
+(:test)
+function testALateRepeatIsRecognisedByItsFinishNotItsLapNumber(
+        logger as Test.Logger) as Lang.Boolean {
+    var tracker = new RepTracker(MINE, BroadcastFrame.MASK_WIDE);
+    tracker.onFrame(TestSupport.advertisement(MINE, 0, 3585, 3585, 13825), []);
+    tracker.onFrame(TestSupport.advertisement(MINE, 0, 20000, 20000, 30000), []);
+
+    // The first rep's frame, arriving after the second's: same lap number as
+    // both, same finish as the first. Only the finish can tell it is old.
+    var late = tracker.onFrame(TestSupport.advertisement(MINE, 0, 3585, 3585, 13825), []);
+
+    Test.assertMessage(late == null, "already had that finish");
+    Test.assertEqualMessage(tracker.repsSeen, 2, "still two");
+    return true;
+}
+
+(:test)
+function testAChipRestartIsANewRepNotHundredsOfMissedOnes(logger as Test.Logger) as Lang.Boolean {
+    var tracker = new RepTracker(MINE, BroadcastFrame.MASK_WIDE);
+    tracker.onFrame(TestSupport.advertisement(MINE, 40, 900000, 900000, 910000), []);
+
+    // Charged or reset: uptime starts again, so the finish is far below the
+    // last one and is not a repeat we remember.
+    var rep = tracker.onFrame(TestSupport.advertisement(MINE, 0, 3585, 3585, 13825), []);
+
+    Test.assertMessage(rep != null, "a rep after the restart");
+    Test.assertEqualMessage(tracker.repsSeen, 2, "counted");
+    Test.assertEqualMessage(tracker.missedReps, 0, "and nothing missed");
+    return true;
+}
+
+(:test)
+function testGapDetectionStillReportsALapNumberJumpButDecidesNothing(
+        logger as Test.Logger) as Lang.Boolean {
+    var tracker = new RepTracker(MINE, BroadcastFrame.MASK_WIDE);
+    tracker.onFrame(TestSupport.advertisement(MINE, 0, 3585, 3585, 13825), []);
+
+    var rep = tracker.onFrame(TestSupport.advertisement(MINE, 2, 20000, 20000, 30000), []);
+
+    // Advisory: a jump in the byte is reported for the screen, but the frame
+    // is accepted on its finish regardless of what the byte says.
+    Test.assertMessage(rep != null, "accepted on its finish");
+    Test.assertEqualMessage(tracker.missedReps, 1, "and the jump is reported");
+    return true;
+}

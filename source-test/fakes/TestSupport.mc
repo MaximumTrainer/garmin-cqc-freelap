@@ -81,8 +81,15 @@ module TestSupport {
     }
 
     // One rep of a three-transmitter course, 10 s total, legs 3/3/4.
+    //
+    // The counters advance with the lap number: rep N finishes 10 s of chip
+    // uptime after rep N-1, the way a real session runs. That is what makes
+    // "lap 0 then lap 1" two reps rather than one repeated - dedup keys on the
+    // finish timestamp, not on the lap-number byte (#80). A test that wants a
+    // *repeat* passes the same lap number and gets the same finish.
     function repFrame(chip as Lang.String, lapNumber as Lang.Number) as Advertisement {
-        return advertisement(chip, lapNumber, 3585, 3585, 13825);
+        var start = 3585 + lapNumber * 13312;   // 13 s apart: 10 s rep + 3 s rest
+        return advertisement(chip, lapNumber, start, start, start + 10240);
     }
 
     function assertArrayEquals(actual as Lang.Array, expected as Lang.Array, message as Lang.String) as Void {

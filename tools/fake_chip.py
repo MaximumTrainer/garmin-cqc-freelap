@@ -124,19 +124,26 @@ def rep_frames(course, speed_mps=8.0, jitter=0.0, index=0, epoch=DEFAULT_EPOCH,
 
 def synthetic_session(course, reps, speed_mps=8.0, jitter=1.0, rest_s=3.0,
                       prefix=DEFAULT_PREFIX, chip_id=DEFAULT_CHIP_ID,
-                      epoch=DEFAULT_EPOCH):
+                      epoch=DEFAULT_EPOCH, lap_number=None):
     """`reps` reps, each starting where the last one finished plus a rest.
 
     Returns [(advertisement, scan_response), ...]. The chip's counters run on
     across the session even though each rep measures from its own start, which
     is what stops a decoder getting away with assuming an origin of zero.
+
+    `lap_number`, if given, is held constant for every rep. No vendor document
+    says the byte increments per rep -- it is 0 in the only worked example --
+    and a watch that keyed reps on it would drop every rep after the first.
+    Generating a session the way the chip may really behave is how that gets
+    tested (#80). The default still increments, so existing vectors are
+    unchanged.
     """
     out = []
     at = epoch
     for index in range(reps):
         advertisement, scan_response = rep_frames(
             course, speed_mps, jitter, index, at, prefix, chip_id,
-            lap_number=index % 256)
+            lap_number=(index % 256) if lap_number is None else lap_number)
         out.append((advertisement, scan_response))
         decoded = ff.decode_advertisement(advertisement)
         at = decoded.block + int(round(rest_s * TICKS_PER_SECOND))
@@ -282,6 +289,9 @@ def build_parser():
                         help="chip id to advertise as, e.g. BC-9636")
     parser.add_argument("--rounding", choices=["round", "truncate"], default="round",
                         help="how to convert ticks for display (see #6)")
+    parser.add_argument("--lap-number", type=int, default=None, metavar="N",
+                        help="hold the lap-number byte at N for every rep, as a chip "
+                             "that does not increment it would (#80)")
     return parser
 
 
@@ -299,7 +309,8 @@ def main(argv=None):
     prefix, chip_id = parse_chip(args.chip)
     course = parse_course(args.course)
     session = synthetic_session(course, args.reps, args.speed, args.jitter,
-                                args.rest, prefix, chip_id)
+                                args.rest, prefix, chip_id,
+                                lap_number=args.lap_number)
 
     if args.vectors:
         print(monkeyc_vectors(session))

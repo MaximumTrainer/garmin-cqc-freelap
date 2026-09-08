@@ -29,10 +29,11 @@ class BroadcastRep {
 // id in, so a test can bind to anything without touching settings.
 class RepTracker {
 
-    // How many recently accepted lap numbers to remember. Advertising windows
-    // overlap in the air and Connect IQ delivers scan results in batches, so a
-    // frame from the previous rep can arrive after the current one has been
-    // recorded; without this, that older frame reads as a chip restart.
+    // How many recently accepted finish timestamps to remember. Advertising
+    // windows overlap in the air and Connect IQ delivers scan results in
+    // batches, so a frame from the previous rep can arrive after the current
+    // one has been recorded; without this, that older frame reads as a new
+    // rep or a chip restart.
     //
     // Small on purpose. This runs in the scan callback, which at a track fires
     // constantly (#9, #26), and an unbounded history of a 60-rep session is
@@ -52,7 +53,7 @@ class RepTracker {
     var idleFrames as Lang.Number = 0;
 
     hidden var lastLap = null;                     // Number, or null before the first
-    hidden var recent as Lang.Array<Lang.Number> = [];
+    hidden var recent as Lang.Array<Lang.Long> = [];   // finish timestamps
 
     function initialize(chipId as Lang.String, laneMask as Lang.Long) {
         boundChipId = chipId;
@@ -100,11 +101,22 @@ class RepTracker {
             return null;
         }
 
-        var lapNumber = advertisement.lapNumber;
-        if (isRecent(lapNumber)) { return null; }
+        // What makes two frames the same rep is the finish timestamp. It is
+        // chip uptime: identical across every repeat of a rep's window,
+        // different for every new crossing of the line, and it needs no
+        // assumption about any other field (#80).
+        //
+        // It is deliberately NOT the lap-number byte. No vendor document says
+        // what that byte counts - it is 0 in the only worked example - and a
+        // tracker keyed on it would, if the byte never incremented, drop every
+        // rep after the first of a session as a repeat, with the first one
+        // looking perfect.
+        var finish = advertisement.block;
+        if (isRecent(finish)) { return null; }
 
-        countTheGapBefore(lapNumber);
-        remember(lapNumber);
+        var lapNumber = advertisement.lapNumber;
+        countTheGapBefore(lapNumber);          // advisory only - see below
+        remember(finish);
         lastLap = lapNumber;
         repsSeen++;
 
@@ -118,7 +130,13 @@ class RepTracker {
         return out;
     }
 
-    // Reps the watch never heard.
+    // Reps the watch never heard - as suggested by the lap-number byte.
+    //
+    // ADVISORY. This count is reported on screen and decides nothing: whether
+    // a frame is accepted rests on its finish timestamp above, never on this.
+    // It assumes the byte increments once per rep, which no document states;
+    // if #5 run C shows otherwise, this becomes noise and should be removed
+    // rather than trusted.
     //
     // Not necessarily lost: Freelap's manual says the chip keeps its latest
     // time in memory and re-sends it when shaken, until it sleeps, is charged,
@@ -149,15 +167,15 @@ class RepTracker {
         missedReps += lapNumber - expected;
     }
 
-    hidden function isRecent(lapNumber as Lang.Number) as Lang.Boolean {
+    hidden function isRecent(finish as Lang.Long) as Lang.Boolean {
         for (var i = 0; i < recent.size(); i++) {
-            if (recent[i] == lapNumber) { return true; }
+            if (recent[i] == finish) { return true; }
         }
         return false;
     }
 
-    hidden function remember(lapNumber as Lang.Number) as Void {
-        recent.add(lapNumber);
+    hidden function remember(finish as Lang.Long) as Void {
+        recent.add(finish);
         if (recent.size() > RECENT) {
             recent = recent.slice(recent.size() - RECENT, null);
         }
