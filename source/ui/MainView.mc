@@ -76,6 +76,18 @@ class MainView extends WatchUi.View {
         beginStack(h * 0.38);
         stackLine(dc, WatchUi.loadResource(Rez.Strings.PressStart), HEADLINE, Graphics.COLOR_WHITE);
 
+        // Which chip this watch will listen to (#64). Shown even though it is
+        // usually unremarkable, because the alternative is an athlete finding
+        // out at the end of a session that it was bound to nothing - or worse,
+        // to somebody else's chip. Amber rather than red when unbound: it is a
+        // thing to fix, not a fault.
+        if (Settings.isChipBound()) {
+            stackLine(dc, Settings.chipId(), DETAIL, Graphics.COLOR_WHITE);
+        } else {
+            stackLine(dc, WatchUi.loadResource(Rez.Strings.NoChipBound), SMALLEST,
+                      Graphics.COLOR_YELLOW);
+        }
+
         // A course the athlete mistyped is only discoverable here: the settings
         // screen accepted it, and by the time a rep is running it is too late.
         var course = app.course;

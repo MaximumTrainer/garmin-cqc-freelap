@@ -35,6 +35,9 @@
             <listEntry value="8">Course 8</listEntry>
         </settingConfig>
     </setting>
+    <setting propertyKey="@Properties.chipId" title="Freelap chip ID (e.g. BC-9636)">
+        <settingConfig type="alphaNumeric" maxLength="8"/>
+    </setting>
     <setting propertyKey="@Properties.bleLatencyMs" title="BLE latency estimate (ms)">
         <settingConfig type="numeric" min="0" max="2000"/>
     </setting>

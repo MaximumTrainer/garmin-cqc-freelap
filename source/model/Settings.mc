@@ -53,6 +53,49 @@ module Settings {
         return raw;
     }
 
+    // The FxChip's printed id: two letters and a number, e.g. "BC-9636" (#64).
+    //
+    // Forgiving about how it is typed and strict about what it stores. The
+    // athlete is copying characters off a small plastic chip into a phone, so
+    // "bc9636", "BC 9636" and " bc-9636 " all mean the same chip. Anything
+    // that is not two letters and a number is not a chip id and normalises to
+    // "" - which is the unbound state, and is deliberately not a near miss:
+    // silently turning a typo into a *different valid-looking* id would bind
+    // the watch to a chip nobody owns and record nothing all session.
+    //
+    // Rendered "%04d" to match the id on the chip's face and the one MyFreelap
+    // shows. Whether a chip numbered below 1000 is really printed with leading
+    // zeros is an open question (#63); padding is the assumption, and ids of
+    // more than four digits are accepted rather than rejected because the
+    // field in the frame is 16 bits and holds more than four digits can show.
+    function normaliseChipId(raw) as Lang.String {
+        if (raw == null || !(raw instanceof Lang.String)) { return ""; }
+
+        var chars = (raw as Lang.String).toUpper().toCharArray();
+        var letters = "";
+        var digits = "";
+        for (var i = 0; i < chars.size(); i++) {
+            var c = chars[i];
+            if (c == ' ' || c == '-' || c == '_') { continue; }
+            var n = c.toNumber();
+            if (n >= 0x41 && n <= 0x5A) {                 // A-Z
+                // Letters after digits means something like "12AB": not an id.
+                if (digits.length() > 0) { return ""; }
+                letters += c.toString();
+            } else if (n >= 0x30 && n <= 0x39) {          // 0-9
+                digits += c.toString();
+            } else {
+                return "";
+            }
+        }
+
+        if (letters.length() != 2) { return ""; }
+        if (digits.length() < 1 || digits.length() > 5) { return ""; }
+        var value = digits.toNumber();
+        if (value == null || value > 65535) { return ""; }
+        return letters + "-" + value.format("%04d");
+    }
+
     function normaliseBool(raw, fallback as Lang.Boolean) as Lang.Boolean {
         if (raw == null) { return fallback; }
         return raw ? true : false;
@@ -125,6 +168,23 @@ module Settings {
 
     function lapPerCrossing() as Lang.Boolean {
         return normaliseBool(Properties.getValue("lapPerCrossing"), false);
+    }
+
+    // "" when no chip is bound. Read on every use rather than cached: a
+    // Garmin Connect sync can change it while the app is running, and
+    // FreelapApp.onSettingsChanged is what makes that take effect.
+    function chipId() as Lang.String {
+        return normaliseChipId(Properties.getValue("chipId"));
+    }
+
+    function isChipBound() as Lang.Boolean {
+        return !chipId().equals("");
+    }
+
+    // Writes the canonical form, so what the athlete typed and what the
+    // on-watch picker chooses end up identical in storage (#63).
+    function setChipId(value) as Void {
+        Properties.setValue("chipId", normaliseChipId(value));
     }
 
     function captureMode() as Lang.Boolean {

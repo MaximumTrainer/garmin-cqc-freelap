@@ -29,6 +29,15 @@
     <!-- Also call addLap() on every crossing (not just FINISH). -->
     <property id="lapPerCrossing" type="boolean">false</property>
 
-    <!-- Remembered chip name from last successful connection. -->
+    <!-- The FxChip's printed id, "2 letters - 4 digits" (issue #64). Typed by
+         the athlete in Garmin Connect and stored on the watch; empty means no
+         chip is bound and the app records nothing rather than guessing. -->
+    <property id="chipId" type="string"></property>
+
+    <!-- Superseded by chipId. The chip's advertised *name* was the only
+         identity we thought we had; the real printed id is in every frame
+         (#63). Removed with the connection-oriented BLE layer in #61, which is
+         what still writes it - there is nothing to replace it with until the
+         decoder lands. -->
     <property id="lastChipName" type="string"></property>
 </properties>

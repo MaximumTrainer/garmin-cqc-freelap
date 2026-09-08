@@ -41,7 +41,8 @@ function testIdleScreenWithACourseProblemFitsThisDisplay(logger as Test.Logger) 
 
     var trace = TestSupport.traceMainView(null, false);
 
-    Test.assertEqualMessage(trace.size(), 4, "status, headline, course summary, problem");
+    Test.assertEqualMessage(trace.size(), 5,
+                            "status, headline, chip, course summary, problem");
     TestSupport.assertLayoutIsSane(trace, "idle screen with a course problem");
 
     app.course = previous;

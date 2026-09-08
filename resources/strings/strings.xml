@@ -13,6 +13,7 @@
     <string id="BleError">BLE error</string>
 
     <string id="PressStart">START to begin</string>
+    <string id="NoChipBound">Set chip ID in Garmin Connect</string>
     <string id="Rep">Rep</string>
     <string id="Paused">PAUSED</string>
     <string id="NoSplits">No splits</string>
