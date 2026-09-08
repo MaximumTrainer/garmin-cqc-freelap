@@ -3,11 +3,8 @@
 **This document used to be a plan for working out an unknown protocol by
 sniffing a Bluetooth connection. That is no longer the job.**
 
-Freelap answered the enquiry in `docs/FREELAP-ENQUIRY.md` (issue #8) and
-supplied the FxChip BLE broadcast frame specification. It is confidential, it
-is deliberately not in this repository, and its byte layout is not reproduced
-here or in the issue tracker. What it establishes, and what changes everything
-below, is architectural:
+Freelap were asked for the specification and provided it (issue #8). What it
+establishes, and what changes everything below, is architectural:
 
 **The chip broadcasts. It never accepts a connection.** There is no service
 UUID, no characteristic, no CCCD subscription, no handshake write, no
@@ -39,6 +36,36 @@ Because the worked example is confidential it lives in a fixture that is not
 committed, so those particular tests skip in CI. **A green suite without it
 proves the two implementations agree with each other, not that either agrees
 with a chip.** Closing that gap is what the rest of this document is for.
+
+## What may and may not be published
+
+The specification was shared in confidence, so this is worth stating once and
+plainly rather than leaving each contributor to guess.
+
+**Not published** — the byte-level field layout, the worked example, and the
+timing arithmetic constants. Describe them where a reader needs to know they
+exist; do not quote them. That applies to code comments, to `docs/`, and to
+public issues.
+
+**Published** — the architectural consequences, every one of which is
+observable by anyone in range with a phone and nRF Connect: that the chip is
+broadcast-only, that a frame is an advertisement plus a scan response, that
+frames are validated by Freelap's Bluetooth SIG company identifier `0x0363`
+(a public registry entry), and that lap-mode advertising is time-bounded.
+
+**Source code** that implements the protocol necessarily encodes offsets and
+constants. That is implementation rather than redistribution — but it is a line
+worth naming rather than crossing quietly, which is why it is named here.
+
+**The document itself** is kept outside the working tree and `*.pdf` is
+git-ignored, with the reason attached so the rule survives someone tidying
+`.gitignore`.
+
+Two questions the specification did not settle are worth a short follow-up to
+the same contact, alongside the technical ones below: how a chip id below 1000
+is printed on the case (#63 renders it back to the athlete, so it has to match
+exactly), and how to read the version and battery bytes, whose values in the
+worked example do not follow a single rule from the bytes beside them.
 
 ## Kit
 
