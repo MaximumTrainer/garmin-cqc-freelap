@@ -359,3 +359,38 @@ def test_the_same_leg_at_a_realistic_speed_is_fine():
     advertisement, _ = fake_chip.rep_frames(course, speed_mps=8.0, jitter=0.0)
 
     assert ff.decode_advertisement(advertisement) is not None
+
+
+# ---------------------------------------------------------------------------
+# Holding the lap-number byte still (issue #80)
+# ---------------------------------------------------------------------------
+#
+# No vendor document says the lap-number byte increments per rep; it is 0 in
+# the only worked example. The fake incremented it anyway, and RepTracker
+# keyed on it, so the two agreed for no reason at all. This mode lets a session
+# be generated the way the chip might actually behave, so the watch can be
+# shown to cope.
+
+def test_a_session_can_hold_the_lap_number_constant():
+    session = fake_chip.synthetic_session(COURSE, 4, jitter=0.0, lap_number=0)
+
+    numbers = [ff.decode_advertisement(ad).lap_number for ad, _ in session]
+    finishes = [ff.decode_advertisement(ad).block for ad, _ in session]
+
+    assert numbers == [0, 0, 0, 0]
+    # ...while the finish timestamps still advance, which is what makes them
+    # four reps rather than one repeated four times.
+    assert finishes == sorted(finishes) and len(set(finishes)) == 4
+
+
+def test_the_default_still_increments_so_existing_vectors_are_unchanged():
+    session = fake_chip.synthetic_session(COURSE, 3, jitter=0.0)
+
+    assert [ff.decode_advertisement(ad).lap_number for ad, _ in session] == [0, 1, 2]
+
+
+def test_the_cli_exposes_the_constant_lap_number_mode(capsys):
+    fake_chip.main(["--print", "--reps", "3", "--lap-number", "7"])
+
+    out = capsys.readouterr().out
+    assert out.count("lap#7") == 3
