@@ -138,6 +138,57 @@ them at each other and record what happens</a> — above all, whether the watch
 can see the splits between transmitters at all. Everything downstream of that
 is built and waiting.</p>
 
+<h2>Where this is up to</h2>
+
+<p>Freelap were asked for the protocol and said yes. What they sent replaced
+the guesswork this project began with, and it changed the shape of it: the chip
+does not hold a conversation with anything. It announces, briefly, and whatever
+happens to be listening hears it. So there is no pairing step, no connection to
+drop, and no reason two devices cannot follow the same chip at once.</p>
+
+<p>The specification is theirs and is not published here. It is implemented,
+not republished.</p>
+
+<h3>Built and tested</h3>
+
+<ul>
+    <li>A decoder for the chip's broadcasts, written twice &mdash; once in
+    Python as the reference, once in Monkey C for the watch &mdash; with a test
+    that fails the moment the two stop agreeing.</li>
+    <li>The part that decides which of the frames arriving are new efforts,
+    which are the same effort announced again, and which belong to the athlete
+    training beside you. It also notices when an effort was never heard at all,
+    and says so.</li>
+    <li>Telling the watch which chip is yours, by the code printed on it,
+    entered once in Garmin Connect.</li>
+    <li>A generator that produces chip frames on a laptop, so most of the work
+    needs no hardware.</li>
+</ul>
+
+<h3>What happens next</h3>
+
+<p>Nearly everything remaining needs a chip, a transmitter and a wrist. The
+first item decides what this app can be, and the rest wait behind it.</p>
+
+<ol>
+    <li><strong>Find out whether a Garmin watch can hear the whole
+    broadcast.</strong> The chip sends the finishing time in one part and the
+    intermediate times in another, and no Garmin documentation says whether a
+    watch receives the second part. If it does not, this records one time per
+    effort rather than a time at every transmitter &mdash; useful, but not what
+    is described above.</li>
+    <li><strong>Check the specification against a real chip</strong>, including
+    two details it leaves genuinely ambiguous.</li>
+    <li><strong>Remove the old connection code</strong>, once a chip has
+    confirmed it refuses connections.</li>
+    <li><strong>Twenty efforts on a track, against the phone app.</strong>
+    Until that agrees, nothing here should be believed.</li>
+    <li><strong>Ride along inside a Garmin workout.</strong> A workout step
+    ends when GPS says the distance is done; a Freelap transmitter ends it when
+    you cross the line. Recording both against the same step would put the
+    difference in your file.</li>
+</ol>
+
 <h2>Questions, bugs, and helping out</h2>
 
 <p>Everything is tracked in

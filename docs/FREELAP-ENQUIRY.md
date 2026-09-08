@@ -1,11 +1,20 @@
 # Asking Freelap for the protocol (issue #8)
 
-Reverse-engineering the FxChip BLE (#4–#7) is the long way round. Freelap have
-partnered with third parties before, so it is worth asking first — and worth
-having asked, in writing, whichever way they answer.
-
-**Nobody has sent this yet.** Fill in the record at the bottom when someone
-does.
+> ## Answered. Freelap shared the specification.
+>
+> They provided the **FxChip BLE broadcast frame specification**, and it
+> replaced the entire connection-oriented design this project had guessed at.
+> The chip broadcasts and never accepts a connection: no service UUIDs, no
+> characteristics, no CCCD, no handshake, no fragmentation.
+>
+> **The document is confidential and is not in this repository.** `*.pdf` is
+> git-ignored with the reason attached, the file is kept outside the working
+> tree, and the byte layout is implemented rather than reproduced — not in the
+> code comments, not in `docs/`, and not in public issues. See "What was
+> restricted" below.
+>
+> The letter is kept as written because the questions in it turned out to be
+> the right ones, and because a follow-up is still owed (see the end).
 
 ---
 
@@ -73,24 +82,54 @@ their site before sending; do not trust an address written down in a repo.
   reverse-engineering (#4, #5) either way. Nothing is blocked on this: it is
   the cheaper path, not the only one.
 
-## If a spec arrives under NDA
+## What was restricted, and how it is handled
 
-Do not paste it into the repo. `source/ble/FreelapProtocol.mc` is the only file
-that knows the packet format, which is deliberate — it is the file that would
-have to be handled differently. Record here which parts are restricted, and
-keep the capture-derived vectors (`source-test/ProtocolVectorTest.mc`) as the
-public evidence that the decoder is correct, since those are observations of
-the chip's own output rather than the specification.
+The specification is marked confidential on every page. The line taken, and
+applied consistently across the code, the docs and the issue tracker:
+
+**Not published** — the byte-level field layout, the worked example, and the
+timing arithmetic constants. These are described where a reader needs to know
+they exist, never quoted.
+
+**Published** — the architectural consequences, all of which are observable by
+anyone with a phone and nRF Connect: that the chip is broadcast-only, that a
+frame is an advertisement plus a scan response, that frames are validated by
+Freelap's Bluetooth SIG company identifier `0x0363` (a public registry entry),
+and that lap-mode advertising is time-bounded.
+
+**Source code** that implements the protocol necessarily encodes offsets and
+constants. That is implementation rather than redistribution, but it is a line
+worth naming rather than crossing quietly, and it is named here so the decision
+is visible if it ever needs revisiting.
+
+**Test vectors.** The document's worked example is the only external evidence
+that the decoder is right rather than merely self-consistent. It lives in a
+fixture that is **not committed**, so the tests using it skip in CI and run for
+anyone holding the document. A green suite without it proves that
+`tools/freelap_frame.py` and `source/ble/BroadcastFrame.mc` agree with each
+other, not that either agrees with a chip.
+
+## Still to ask
+
+The specification did not answer everything, and two of the gaps matter enough
+to be worth a short follow-up to the same contact:
+
+1. **Which mask** applies to the running totals. The document gives two
+   different ones in two different places, and they diverge silently once a
+   counter's top bits are set (#6).
+2. **How chip ids are printed.** The id is a 16-bit field but the printed form
+   is two letters and four digits. Is an id below 1000 shown zero-padded, and
+   what happens above 9999? The app renders it back to the athlete, so it has
+   to match the chip's face exactly (#63).
+
+Worth adding, since they are cheap: the version and battery bytes, whose
+readings in the worked example do not follow a single rule from the bytes
+beside them.
 
 ## Record
 
 | | |
 | --- | --- |
-| Sent | *(not yet)* |
-| To | |
-| By | |
-| Reply received | |
-| Outcome | |
-
-Update this table and the issue when it is sent, and again when they reply or
-thirty days pass.
+| Sent | *(the enquiry was answered; the sending details were not recorded here)* |
+| Outcome | **Specification provided**, confidential, not redistributable |
+| Follow-up owed | the two questions above |

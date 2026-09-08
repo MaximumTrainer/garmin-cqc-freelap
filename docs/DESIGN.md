@@ -8,23 +8,23 @@ A Freelap course is made of transmitters (Tx Junior Pro, Tx Pad Pro, Tx Touch Pr
 
 A Garmin watch has no receiver for that magnetic field. Its magnetometer is a slow (tens of Hz) DC/compass sensor exposed through the Sensor API; it cannot demodulate a coded kHz field, and the Connect IQ sandbox wouldn't give you raw samples fast enough even if the hardware could. So "detect Freelap transmitters" from the watch means one thing in practice:
 
-**The watch talks to the FxChip BLE (or a Freelap Relay Coach BLE) over Bluetooth Low Energy, receives the crossing data the chip already captured, and writes it into the activity.** The transmitters are detected by the chip; the watch consumes the chip's output. This is the same relationship the MyFreelap phone app has with the chip, so nothing is lost versus the phone.
+**The watch listens for the FxChip BLE's Bluetooth broadcasts, decodes the crossing data the chip already captured, and writes it into the activity.** The transmitters are detected by the chip; the watch is a passive observer of what the chip announces. That is the same relationship the MyFreelap phone app has with the chip — it listens to the same broadcasts — so nothing is lost versus the phone, and several listeners can watch one chip at once.
 
-Consequence for timing: the numbers of record are the chip's. The watch's job is to keep them intact (microsecond field, no rounding), anchor them to wall-clock time as well as it can, and derive pace/speed/velocity from the distances you configure for the course.
+Consequence for timing: the numbers of record are the chip's. The watch's job is to carry them into the file without re-measuring or re-deriving them, anchor them to wall-clock time as well as it can, and derive pace/speed/velocity from the distances you configure for the course. See §3 for what the chip's resolution actually is — it is not microseconds, whatever the field width suggests.
 
 ## 2. System overview
 
 ```
- Tx START ──┐                         ┌──────────────────────────┐
- Tx LAP  ───┼─ magnetic field ─▶ FxChip BLE ── BLE GATT notify ─▶│  Garmin watch (CIQ app)  │
- Tx FINISH ─┘   (chip timestamps)     └──────────────────────────┘
+ Tx START ──┐                        ┌──────────────────────────┐
+ Tx LAP  ───┼─ magnetic field ─▶ FxChip BLE ┈┈ broadcast ┈┈▶│  Garmin watch (CIQ app)  │
+ Tx FINISH ─┘   (chip timestamps)      (no connection)      └──────────────────────────┘
                                               │
                         ┌─────────────────────┼──────────────────────┐
                         ▼                     ▼                      ▼
                  BLE layer            Split engine              FIT recorder
-            (scan/pair/notify)   (course model, derive        (developer fields on
-                                  pace/speed/velocity)         record/lap/session,
-                                                               addLap per rep)
+             (scan, validate,     (course model, derive        (developer fields on
+              whose chip, which    pace/speed/velocity)         record/lap/session,
+              frames are reps)                                  addLap per rep)
                                               │
                                               ▼
                                  .FIT file → Garmin Connect / Strava / your tools
@@ -32,28 +32,67 @@ Consequence for timing: the numbers of record are the chip's. The watch's job is
 
 Four modules, one direction of data flow:
 
-1. **BLE layer** (`source/ble/`). Scans for the chip, pairs, subscribes to notifications, hands raw ByteArrays to the protocol adapter. Owns reconnect logic.
-2. **Protocol adapter** (`source/ble/FreelapProtocol.mc`). The only file that knows Freelap's packet format. Today it is a stub that decodes a *hypothesised* layout and, in capture mode, logs every raw packet with a watch timestamp so you can reverse-engineer it. Swapping in the real decoder does not touch anything else.
+1. **BLE layer** (`source/ble/`). Scans continuously for the length of a session and hands each advertisement to the decoder. There is no pairing, no subscription and nothing to reconnect to; what there is instead is a filtering problem, because Connect IQ has no scan filter and every device in range arrives here.
+2. **Frame decoder** (`source/ble/BroadcastFrame.mc`) and **rep tracker** (`source/ble/RepTracker.mc`). The decoder turns one advertisement, optionally with its scan response, into a chip id and a rep; it is a pure function of bytes and holds no state. The tracker decides which of those frames are *ours* and which are reps rather than repeats — a chip re-advertises the same rep throughout its window, and other athletes' chips are in range the whole time.
 3. **Split engine** (`source/model/`). Holds the course definition (ordered transmitters with cumulative distance), turns crossings into `SplitEvent`s, computes split time, cumulative time, distance, speed (km/h), velocity (m/s), pace (s/km and min/km), and tracks reps.
 4. **FIT recorder** (`source/fit/`). Owns the `ActivityRecording.Session`, creates the developer fields, writes each split, calls `addLap()` at each FINISH so every Freelap rep is a Garmin lap, and writes rep/session summaries.
 
+### 2.1 Two shells, one core (#68)
+
+The four modules above are the *core*, and none of them owns a session, cuts a
+lap or draws a screen. That was an inject-don't-fetch discipline rather than a
+plan, but it turns out to matter, because there is a second shape this app
+wants to take and it needs the same core.
+
+**The watch app** (what exists today) records its own activity. It owns the
+screen, cuts one Garmin lap per Freelap rep, and works for ad-hoc track
+sessions where there is no structured workout.
+
+**A data field** would ride inside Garmin's own run activity instead. That is
+the only way to reach a structured workout: `PersistedContent.Workout` exposes
+a name and an id but no steps, and handing off with `toIntent()` means this app
+exits. `Toybox.ActivityRecording` is watch-app-only and the workout callbacks
+are data-field-only, so the two cannot be one binary.
+
+What the data field buys is the thing this project is actually for. A
+distance-based workout step is ended by **GPS**; Freelap is ended by a **beam**.
+Writing both against the same step puts the comparison in the file:
+
+> step 3 — Garmin 12.4 s (GPS), Freelap 11.93 s (beam)
+
+What it costs: `addLap()` does not exist for a data field, so lap-per-rep is
+gone unless a workout is loaded (Garmin cuts a lap per step, which is the same
+structure by another route); the memory limit is far tighter and very uneven,
+**32 KB on some supported products** against 128 KB–1 MB for a watch app; and
+the screen is a rectangle Garmin assigns.
+
+So: two targets sharing `BroadcastFrame`, `RepTracker`, `Settings`, `Course`
+and `SplitEngine`, differing only in the shell. Gated on a spike — whether a
+data field can scan BLE at all while a native activity is recording, which the
+SDK does not say and the simulator will not settle.
+
 ## 3. Timing model (why "microseconds" needs care)
 
-> **Correction pending (#14).** `TICK_US = 1000` was a placeholder for a protocol we had guessed at. The real conversion is specified in Freelap's document: raw counts divided by a fixed, non-decimal divisor, giving hundredths of a second. The claim below that times reach the FIT file with nothing rounded on the way therefore needs restating honestly once #6 confirms the divisor — the chip's resolution is what it is, and a derived microsecond figure is not a measurement.
+**The chip's tick is 1/1024 s — just under a millisecond.** That is the resolution of every number in this project, and it is worth stating plainly because the FIT fields are in microseconds and that looks like a much stronger claim than it is. A microsecond field is a container, not a measurement. What the chip resolves is about 0.98 ms, which is still roughly ten times finer than the hundredths MyFreelap displays.
+
+Two things follow, and the second is the one that used to be wrong here:
+
+* **Subtract in ticks, convert once.** The tick is not a decimal fraction of a second, so converting each leg before adding them up accumulates error. `BroadcastFrame.segments()` does the arithmetic in ticks and the conversion happens at the edge.
+* **"Nothing is rounded on the way" was not true.** Converting a tick count to microseconds is exact only when that count is a multiple of 16. The residue is under a microsecond — far below what the chip can measure, and irrelevant in practice — but the old claim overstated it, and this document is where that should be admitted rather than quietly dropped.
 
 
 There are three clocks:
 
 | Clock | Resolution | Who owns it | Notes |
 |---|---|---|---|
-| FxChip internal | Freelap quotes 0.02 s precision; internal tick likely 1 ms or finer (verify by sniffing) | chip | Authoritative for split *durations*. Relative, not wall-clock. |
+| FxChip internal | 1/1024 s (≈0.977 ms), from Freelap's specification | chip | Authoritative for split *durations*. Relative to the chip's own uptime, not wall-clock. |
 | Watch `System.getTimer()` | 1 ms, monotonic | watch | Used to timestamp BLE packet arrival. |
 | Watch `Time.now()` / FIT timestamp | 1 s (FIT `timestamp` is uint32 seconds; records also carry `timestamp_ms` internally, but CIQ doesn't expose sub-second control) | watch | What Garmin Connect shows on the timeline. |
 
 Design decisions:
 
-- **Durations are stored as uint32 microseconds exactly as received, never rounded.** `split_time_us` and `rep_time_us` are the primary fields. A uint32 in µs wraps at 71.6 minutes; a single split or a single rep will never approach that. Cumulative session time is stored in ms as a separate field to avoid the wrap.
-- **Absolute timestamps are estimated, not measured.** When the FINISH packet arrives at `t_arrive` (watch monotonic ms), the FINISH crossing is assumed to have happened at `t_arrive − L`, where `L` is the configurable `bleLatencyMs` setting (default 150 ms). Every earlier crossing in the same rep is placed at `t_finish − (rep_time − cumulative_time_at_crossing)`, so the gaps between estimates are the chip's own splits rather than an even spread. These go in `fl_est_ms` (ms since session start), named `_est_` so nobody mistakes them for measurements. Anyone analysing the file uses the chip's µs durations for performance and the estimate only for placing splits on the timeline.
+- **Durations are stored as uint32 microseconds**, converted once from the chip's ticks. `split_time_us` and `rep_time_us` are the primary fields. A uint32 in µs wraps at 71.6 minutes; a single split or a single rep will never approach that. Cumulative session time is stored in ms as a separate field to avoid the wrap.
+- **Absolute timestamps are estimated, not measured.** The broadcast makes this both easier and better founded than it was under the old design: a whole rep arrives at once, carrying the chip's own exact intervals, so only the *anchor* is uncertain and any error shifts the whole rep equally rather than distorting the splits within it. When the first advertisement for a rep is observed at `t_arrive` (watch monotonic ms), the FINISH crossing is assumed to have happened at `t_arrive − L`, where `L` is the configurable `bleLatencyMs` setting (default 150 ms). `L` is no longer link latency: it is the delay from the finish crossing to the moment the watch *noticed* the chip advertising, which depends on the scan duty cycle (#9). Every earlier crossing in the same rep is placed at `t_finish − (rep_time − cumulative_time_at_crossing)`, so the gaps between estimates are the chip's own splits rather than an even spread. These go in `fl_est_ms` (ms since session start), named `_est_` so nobody mistakes them for measurements. Anyone analysing the file uses the chip's µs durations for performance and the estimate only for placing splits on the timeline.
 
   Worked, with the numbers `source-test/LatencyModelTest.mc` pins — session start at t=10 000 ms, burst at t=30 000, L=150, rep 0 / 4.120 / 7.480 / 11.930 s:
 
@@ -68,10 +107,10 @@ Design decisions:
 
 - **An estimate that lands before the session started is clamped to 0 and flagged.** This is not defensive coding for an impossible case: the chip *buffers*, so starting the watch part-way through a rep gives crossings that genuinely predate the session. A negative offset is not a time, and `fl_est_ms` is a uint32. The clamp keeps the field valid; `SplitEvent.estClamped` (and `SplitEngine.clampedEstimates`) is what stops the resulting `0` being read as "this crossing happened exactly at session start". The flag travels in the stored split log because no FIT field carries it — adding a 21st developer field for a diagnostic was not worth it.
 
-  **`L` has not been measured.** 150 ms is a placeholder until someone runs the ten timed trials against a phone stopwatch with a real chip (issue #15's third criterion). When that happens the measured value belongs here, replacing this paragraph.
+  **`L` has not been measured.** 150 ms is a placeholder until someone runs the ten timed trials against a phone stopwatch with a real chip (issue #15's third criterion). When that happens the measured value belongs here, replacing this paragraph. Note that it is now bounded below by however often the watch is actually scanning, so it may be larger than the old link-latency guess.
 - **Garmin laps are aligned to reps, not to individual splits.** `addLap()` can only be called "now"; CIQ cannot back-date a lap. Since the chip delivers a rep's splits in one burst at FINISH, the app calls `addLap()` once on FINISH, so each Garmin lap = one Freelap rep, with the rep's totals in lap-level developer fields. Individual splits are written as a burst of record-level developer fields (one split per 1 Hz record, see §5) plus kept in app storage for export.
 
-If Freelap's chip turns out to also notify on START and each LAP crossing in real time (possible on newer firmware; the sniffing plan will tell you), the engine already supports "streaming" mode: each crossing is written the moment it arrives and `addLap()` can optionally fire on every crossing.
+There is no real-time crossing feed to hope for. The chip advertises only after a crossing at a transmitter set to **Finish**, and the whole rep is in that broadcast — so a rep is always written at its end, never as it happens. The `lapPerCrossing` setting still exists and still cuts a Garmin lap per split, but it does so when the rep arrives, not as the athlete passes each transmitter.
 
 ## 4. Distance and derived metrics
 
@@ -106,8 +145,8 @@ Worked example, and the numbers the unit tests pin (`source-test/SplitEngineTest
 
 Three rules the arithmetic follows:
 
-- **Chip time stays a `Long` until the rep origin has been subtracted.** The FxChip timestamps with its own clock, which may be an absolute uptime well past 2³¹ µs; `decodeNumber(UINT32)` returns a `Long` for exactly this reason. Narrowing before the subtraction wraps the value and every derived metric with it.
-- **Durations stay integer microseconds end to end.** Nothing rounds before the FIT file.
+- **Chip time stays a `Long` until the rep origin has been subtracted.** The frame's counters are 32-bit and a Monkey C `Number` is signed, so a chip that has been running long enough decodes negative — and every derived metric with it. `BroadcastFrame` keeps `offset`, `fromLap` and `block` as `Long`s for exactly this reason. Python has arbitrary precision and would never have shown the problem; it is a watch-only failure, and it has its own test.
+- **Durations are converted from ticks once**, at the edge, never leg by leg. See §3.
 - **A zero-length or zero-duration split gives velocity, speed and pace of 0**, never an exception and never a fabricated number. A transmitter that double-fires, and a crossing the course cannot place, both land here.
 
 `best_rep_us` only ever considers `RepStatus.OK` reps — a "best" of 8 s from a rep where the athlete missed a transmitter would be worse than useless — while `total_distance_m` sums every rep, because the athlete ran the metres either way.
@@ -189,7 +228,7 @@ Because a rep's splits arrive together, the recorder queues them and drains one 
 
 Known SDK caveat (Garmin forum bug report): lap/session developer fields are sometimes dropped if `setData()` and `addLap()`/`save()` happen in the same code path with no yield. The recorder therefore sets lap fields, waits one timer tick (≥250 ms) and only then calls `addLap()`; same for session fields before `save()`.
 
-**Export alongside the FIT.** Every split is also appended to `Application.Storage` as a compact array. On save, the app writes a summary the user can view on-watch, and the raw event list is retrievable through the CIQ simulator / a companion phone app later if you want a CSV with full µs precision independent of Garmin Connect's rendering (Connect displays developer fields but rounds in the UI; the FIT file itself keeps the uint32).
+**Export alongside the FIT.** Every split is also appended to `Application.Storage` as a compact array. On save, the app writes a summary the user can view on-watch, and the raw event list is retrievable through the CIQ simulator / a companion phone app later if you want a CSV at the file's own resolution independent of Garmin Connect's rendering (Connect displays developer fields but rounds in the UI; the FIT file itself keeps the uint32).
 
 ### 5.1 How a lap actually gets cut
 
@@ -288,7 +327,7 @@ Watch-app, not a data field, because a data field cannot use BLE on most devices
 
 Screens:
 
-1. **Connect** — scan progress, list of matching devices with RSSI, tap to pair. Remembers last chip.
+1. **Chip** — which chip the watch is listening for, whether it has been heard, and the chips in range if you need to change it. There is nothing to pair: the binding is the id printed on the chip, typed in Garmin Connect or picked from what is in range (#63, #64).
 2. **Course** — reachable from the idle menu (BACK before a session starts), so a workout begins without reaching for a phone.
 
    **Choose course** lists the slots that are actually filled in, by name with the total distance under each. Slot numbers are kept, so an empty slot 3 does not renumber slots 4 upwards — the number on screen is the number in Garmin Connect. A slot whose spec does not parse is still listed, with the reason where the distance would be: hiding it would just leave the athlete wondering where course 3 went.
@@ -299,8 +338,8 @@ Screens:
 3. **Activity** — the only screen that exists while a session runs. Wireframe, and what each line is:
 
    ```
-        Chip OK            status, coloured: green subscribed,
-                           amber scanning/pairing, red none
+        Chip OK            status, coloured: green heard this rep,
+                           amber listening, red unbound or silent
 
         8.99 m/s           last split velocity, 2 dp. The number is in a
                            FONT_NUMBER_* face; the unit beside it is not.
@@ -391,7 +430,9 @@ Short version: the chip broadcasts to anyone listening, so there is no conversat
 
 ## 9. Risks and open questions
 
-- **Protocol is proprietary and undocumented.** Everything in `FreelapProtocol.mc` is a hypothesis until sniffed. The layered design confines the blast radius to that file. Also worth an email to Freelap: they have partnered with third parties (e.g. for team apps) and may share the GATT spec under NDA.
+- **~~Protocol is proprietary and undocumented.~~ Resolved (#8).** Freelap were asked, in writing, and supplied the FxChip BLE broadcast frame specification. It is confidential and is not in this repository; it is implemented, not reproduced. The layered design paid for itself here in a way that is worth recording: the answer invalidated the entire connection-oriented BLE layer and the blast radius really was confined — the split engine, the FIT recorder and the UI were untouched.
+
+  What replaced it as the open risk is narrower and sharper: **whether a Garmin watch can read the half of the broadcast that carries the splits between transmitters** (#60). If it cannot, this records a rep total and a final split and nothing finer.
 - **The chip may refuse a second central.** If MyFreelap must stay connected, the watch can't also connect (BLE peripherals usually allow one central). Test with the phone app closed.
 - **Chip may only push data on FINISH.** Designed for; streaming is a bonus.
 - **Absolute-time accuracy is ~100–300 ms** because of BLE latency; durations are exact. Documented in the field names (`_est_`).
