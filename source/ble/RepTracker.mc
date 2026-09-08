@@ -45,6 +45,12 @@ class RepTracker {
     var repsSeen as Lang.Number = 0;
     var missedReps as Lang.Number = 0;
 
+    // Frames from our chip that carried no rep: zeroed counters, or a finish
+    // that is not after its start. A shaken chip in discoverable mode sends
+    // exactly this (#81). Counted so that "heard, but idle" and "never heard"
+    // can be told apart on screen - they call for different advice (#9).
+    var idleFrames as Lang.Number = 0;
+
     hidden var lastLap = null;                     // Number, or null before the first
     hidden var recent as Lang.Array<Lang.Number> = [];
 
@@ -68,6 +74,7 @@ class RepTracker {
     function reset() as Void {
         repsSeen = 0;
         missedReps = 0;
+        idleFrames = 0;
         lastLap = null;
         recent = [];
     }
@@ -80,6 +87,18 @@ class RepTracker {
         if (advertisement == null) { return null; }
         if (!isBound()) { return null; }
         if (!advertisement.chip().equals(boundChipId)) { return null; }
+
+        // A rep is a finish that comes after a start. Zero counters are the
+        // discoverable-mode frame; a finish before its start is a wrapped
+        // counter. Neither is a rep, and neither may touch the sequence
+        // tracking below - a shaken chip between two reps is not a repeat, a
+        // gap or a restart. This guard is deliberate and lives here, at the
+        // decision, rather than being an accident of the decoder's identity
+        // check (#81).
+        if (advertisement.block == 0l || advertisement.split(mask) <= 0) {
+            idleFrames++;
+            return null;
+        }
 
         var lapNumber = advertisement.lapNumber;
         if (isRecent(lapNumber)) { return null; }

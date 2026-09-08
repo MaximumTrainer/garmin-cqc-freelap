@@ -366,3 +366,25 @@ function testTwoChipsDecodeIndependently(logger as Test.Logger) as Lang.Boolean 
     Test.assertEqualMessage(theirs.lapNumber, 7, "on their seventh rep");
     return true;
 }
+
+// ---------------------------------------------------------------------------
+// The discoverable-mode template (issue #81)
+// ---------------------------------------------------------------------------
+
+(:test)
+function testTheDiscoverableModeTemplateIsRejectedByTheDecoder(
+        logger as Test.Logger) as Lang.Boolean {
+    // Company id and frame type present; lap number, prefix, id and all three
+    // counters zero; only the trailing version and battery bytes carry values.
+    // This is what a shaken chip broadcasts, per the specification.
+    var discoverable = [0x63,0x03,0x58,0x00, 0x00,0x00, 0x00,0x00,
+                        0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,
+                        0x00,0x00, 0xa1,0xd2,0x33,0x11]b;
+
+    // Rejected here because a blank prefix is not an identity. The tracker
+    // has its own guard for the same shape, tested separately, so that this
+    // check can change without silently admitting zero-length reps.
+    Test.assertMessage(BroadcastFrame.decodeAdvertisement(discoverable) == null,
+                       "no identity, no advertisement");
+    return true;
+}

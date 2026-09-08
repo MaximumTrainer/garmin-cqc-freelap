@@ -323,3 +323,93 @@ function testResetForgetsTheSession(logger as Test.Logger) as Lang.Boolean {
     Test.assertEqualMessage(tracker.missedReps, 0, "still none");
     return true;
 }
+
+// ---------------------------------------------------------------------------
+// Frames that carry no rep (issue #81)
+// ---------------------------------------------------------------------------
+//
+// The specification's discoverable-mode advertisement - what a chip sends when
+// it is shaken - zeroes the identity and every counter. Today it is rejected
+// only because its blank prefix fails the decoder's ASCII check, an identity
+// rule written for another purpose. These tests make the rep-level guard
+// deliberate, at the layer where the decision is actually made.
+
+(:test)
+function testAFrameWhoseFinishEqualsItsStartIsNotARep(logger as Test.Logger) as Lang.Boolean {
+    var tracker = new RepTracker(MINE, BroadcastFrame.MASK_WIDE);
+
+    var rep = tracker.onFrame(TestSupport.advertisement(MINE, 0, 3585, 3585, 3585), []);
+
+    // A rep of zero ticks is not a rep. Recording it would write zero-length
+    // legs to the FIT file and cut a Garmin lap for nothing.
+    Test.assertMessage(rep == null, "zero-length is not a rep");
+    Test.assertEqualMessage(tracker.repsSeen, 0, "nothing counted");
+    return true;
+}
+
+(:test)
+function testAnAllZeroFrameIsNotARep(logger as Test.Logger) as Lang.Boolean {
+    var tracker = new RepTracker(MINE, BroadcastFrame.MASK_WIDE);
+
+    // Identity intact, every counter zero: the discoverable-mode shape, as the
+    // tracker would see it if the decoder ever let it through.
+    var rep = tracker.onFrame(TestSupport.advertisement(MINE, 0, 0, 0, 0), []);
+
+    Test.assertMessage(rep == null, "not a rep");
+    return true;
+}
+
+(:test)
+function testAFinishBeforeItsStartIsNotARep(logger as Test.Logger) as Lang.Boolean {
+    var tracker = new RepTracker(MINE, BroadcastFrame.MASK_WIDE);
+
+    // A counter that has wrapped under the chosen mask. Silently producing a
+    // negative duration would be far worse than dropping the frame.
+    var rep = tracker.onFrame(TestSupport.advertisement(MINE, 0, 13825, 13825, 3585), []);
+
+    Test.assertMessage(rep == null, "wrapped counters are not a rep");
+    return true;
+}
+
+(:test)
+function testIdleFramesAreCountedSoAnIdleChipIsNotReportedAsSilent(
+        logger as Test.Logger) as Lang.Boolean {
+    var tracker = new RepTracker(MINE, BroadcastFrame.MASK_WIDE);
+
+    for (var i = 0; i < 5; i++) {
+        tracker.onFrame(TestSupport.advertisement(MINE, 0, 0, 0, 0), []);
+    }
+
+    // "Heard, but carrying nothing" and "never heard" call for different
+    // advice - shake it versus wake it - so they must be distinguishable (#9).
+    Test.assertEqualMessage(tracker.idleFrames, 5, "five idle frames");
+    Test.assertEqualMessage(tracker.repsSeen, 0, "and no reps");
+    return true;
+}
+
+(:test)
+function testAnIdleFrameDoesNotDisturbRepTracking(logger as Test.Logger) as Lang.Boolean {
+    var tracker = new RepTracker(MINE, BroadcastFrame.MASK_WIDE);
+    tracker.onFrame(TestSupport.repFrame(MINE, 0), []);
+
+    tracker.onFrame(TestSupport.advertisement(MINE, 0, 0, 0, 0), []);
+    var next = tracker.onFrame(TestSupport.repFrame(MINE, 1), []);
+
+    // A shaken chip between two reps must not be read as a repeat, a gap, or
+    // a restart.
+    Test.assertMessage(next != null, "the next real rep still counts");
+    Test.assertEqualMessage(tracker.repsSeen, 2, "two reps");
+    Test.assertEqualMessage(tracker.missedReps, 0, "no phantom gap");
+    return true;
+}
+
+(:test)
+function testResetClearsTheIdleCount(logger as Test.Logger) as Lang.Boolean {
+    var tracker = new RepTracker(MINE, BroadcastFrame.MASK_WIDE);
+    tracker.onFrame(TestSupport.advertisement(MINE, 0, 0, 0, 0), []);
+
+    tracker.reset();
+
+    Test.assertEqualMessage(tracker.idleFrames, 0, "cleared");
+    return true;
+}
