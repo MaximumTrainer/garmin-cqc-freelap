@@ -384,10 +384,10 @@ The unit-test harness cannot produce an activity file at all: it tears the app d
 
 ## 8. Reverse-engineering plan (see `docs/REVERSE-ENGINEERING.md`)
 
-> **Largely answered (#8).** Freelap supplied the specification, so the work is confirming a documented frame against a real chip (#4, #5, #6) rather than deriving an unknown one. `docs/REVERSE-ENGINEERING.md` still describes sniffing a connection and needs rewriting with #61.
+> **Largely answered (#8).** Freelap supplied the specification, so the work is confirming a documented frame against a real chip (#4, #5, #6) rather than deriving an unknown one. `docs/REVERSE-ENGINEERING.md` has been rewritten to match: confirming a documented broadcast frame, and the open question of what a watch can see of it (#60).
 
 
-Short version: capture the phone ↔ chip traffic with Android's HCI snoop log or an nRF52840 dongle + Wireshark while doing a scripted set of runs (known distances, count splits, note times shown in MyFreelap), then diff packets against the app's displayed values to identify the timestamp unit, packet framing, transmitter code field and any handshake. The watch's capture mode doubles as a field logger once the service UUID is known. `tools/decode_capture.py` is a scaffold for the diffing.
+Short version: the chip broadcasts to anyone listening, so there is no conversation to intercept and the phone is not needed — capture the air with nRF Connect, `btmon` or a sniffer while running a scripted set (known distances, count splits, note what MyFreelap shows), then check that the documented offsets reproduce those values. `tools/decode_capture.py` decodes a capture at those offsets, and keeps its brute-force search for the case where a frame does *not* decode — which is when you want to be asking where the number actually is rather than assuming the chip is odd. The watch's own capture mode is the only way to tell "the chip never advertised" from "the watch was not listening", which is what #9 needs.
 
 ## 9. Risks and open questions
 

@@ -1,53 +1,135 @@
-# Reverse-engineering the FxChip BLE protocol
+# Confirming the FxChip BLE protocol against a real chip
 
-**Ask first.** `docs/FREELAP-ENQUIRY.md` has a drafted letter to Freelap asking
-for the specification outright (issue #8). It costs an email and nothing here is
-blocked on the answer — reverse-engineering is the fallback, not the only path —
-but it is worth having asked, in writing, whichever way they reply.
+**This document used to be a plan for working out an unknown protocol by
+sniffing a Bluetooth connection. That is no longer the job.**
 
-Goal: fill in the constants and the decoder in `source/ble/FreelapProtocol.mc`. You need to learn:
+Freelap answered the enquiry in `docs/FREELAP-ENQUIRY.md` (issue #8) and
+supplied the FxChip BLE broadcast frame specification. It is confidential, it
+is deliberately not in this repository, and its byte layout is not reproduced
+here or in the issue tracker. What it establishes, and what changes everything
+below, is architectural:
 
-1. Advertising: device name, service UUID(s), manufacturer data (company ID + bytes). → device matching.
-2. GATT: which characteristic notifies with run data, whether a command/handshake write is needed, MTU / fragmentation.
-3. Packet format: framing, per-crossing record layout, timestamp unit and width, transmitter code field, chip id, checksum.
+**The chip broadcasts. It never accepts a connection.** There is no service
+UUID, no characteristic, no CCCD subscription, no handshake write, no
+notification and no fragmentation. A rep arrives as two fixed-layout payloads
+carried as Bluetooth manufacturer-specific data under Freelap's registered
+company identifier `0x0363`:
+
+* the **advertisement** — the chip's printed id, and the rep's running totals.
+  Broadcast for a bounded window after a Finish crossing, then it stops;
+* the **scan response** — the intermediate crossing times, if the course had
+  any.
+
+So the remaining work is confirmation, not discovery, and most of it is about
+the *watch* rather than the chip.
+
+## What is already settled, and how
+
+The decoder exists twice and the two are checked against each other:
+
+* `tools/freelap_frame.py` — the reference implementation. It reproduces every
+  value in the vendor document's worked example, and the legs of the rep sum to
+  the rep total, which the document never states and which would not hold if
+  any offset were wrong.
+* `source/ble/BroadcastFrame.mc` — the watch's decoder, checked against vectors
+  generated from the Python one. `tools/tests/test_monkeyc_vectors.py`
+  re-derives those vectors and fails if the two drift apart.
+
+Because the worked example is confidential it lives in a fixture that is not
+committed, so those particular tests skip in CI. **A green suite without it
+proves the two implementations agree with each other, not that either agrees
+with a chip.** Closing that gap is what the rest of this document is for.
 
 ## Kit
 
-- Android phone with MyFreelap installed + Developer options → *Enable Bluetooth HCI snoop log*. Free, no extra hardware, captures everything the app does including any handshake writes. Pull `btsnoop_hci.log` via `adb bugreport` and open in Wireshark.
-- Or: nRF52840 dongle + nRF Sniffer for BLE (Wireshark plugin) to sniff over-the-air, useful when you also want to see the watch↔chip traffic later.
-- nRF Connect (phone app) to browse the chip's GATT table directly: service/characteristic UUIDs and properties (notify/write) in 30 seconds.
-- A tape measure and 3 transmitters.
+* An FxChip BLE, and at least one transmitter that can be set to **Finish** —
+  without one the chip never enters lap mode and never advertises.
+* A phone running nRF Connect, or `btmon` on Linux, or an nRF52840 dongle with
+  the Wireshark sniffer plugin. Any of the three will do: the chip broadcasts,
+  so there is no connection to get inside and no pairing to defeat.
+* MyFreelap, as the independent source of truth for the times.
+* A tape measure.
 
-## Scripted session (do this exactly, note everything)
+Note what is *not* needed any more: Android HCI snoop logs, a rooted phone, or
+any attempt to observe the MyFreelap↔chip conversation. There is no
+conversation. The phone is just another passive listener, and so is the watch.
 
-For each run write down: MyFreelap's displayed splits (to the 1/100 or 1/1000 it shows), the number of transmitters crossed, and the wall time you crossed FINISH (phone stopwatch started as you cross START is enough).
+## The runs that still matter (issue #5)
 
-| Run | Course | Purpose |
+For each run record the values MyFreelap displays, the transmitters crossed and
+their modes, and anything surprising.
+
+| Run | Setup | What it settles |
 |---|---|---|
-| A | START → FINISH, 20 m, walk | one record; find the timestamp field by matching the displayed time |
-| B | same, jog | same layout, different value; confirms unit (ms vs 1/100 vs µs) and endianness |
-| C | START → LAP → FINISH, 10 m + 10 m | two records; find the record stride and the transmitter code byte |
-| D | START → LAP → LAP → FINISH | three; confirms stride, look for a count/length byte in the header |
-| E | Cross START only, wait 30 s, cross FINISH | is there a START notification in real time or only a burst at FINISH? |
-| F | Run C twice without reconnecting | rep counter / sequence number? |
-| G | Power-cycle the chip, run A | what resets: sequence, timestamp base? |
+| A | Start + Finish, one rep | The minimum frame; what the lap array holds with no intermediates |
+| B | Start + 2 intermediates + Finish | Intermediate laps in the scan response, and their order |
+| C | As B, three reps back to back | Whether the counters reset per rep or accumulate — this is what settles `OFFSET` vs `FROMLAP` |
+| D | Chip held in a transmitter's field for 5 s | Discoverable mode, and the chip's local name |
+| E | A rep, then wait out the window without listening | That the advertising really does stop, and how long the watch has |
+| F | Two chips crossing the same transmitters | That frames separate by chip id — the basis of #63 and #28 |
+| G | Chip taken out of range mid-rep and returned | Whether a missed crossing is recoverable from a later frame, or lost |
 
-## Diffing
+## The three questions the document could not answer
 
-`tools/decode_capture.py` takes a Wireshark export (`File → Export Packet Dissections → CSV` with `btatt.value` visible, or `tshark -T fields -e frame.time_epoch -e btatt.value`) and prints each notification as hex with the arrival time and the delta to the previous packet. Add your noted MyFreelap values as arguments and it will search each packet for those values encoded as u16/u32 LE/BE in ms, 1/100 s and µs, which usually pinpoints the timestamp field in one pass.
+These are the reason a capture is still needed, and each has a home:
 
-Things to check once you've found the timestamp:
+1. **Which mask** (issue #6). The specification applies two different masks to
+   the running totals in two different places. They agree until a counter's top
+   bits are set and then diverge silently, so a chip that has been running long
+   enough is the only way to tell. Both are implemented as a parameter, and
+   there is a test asserting the worked example *cannot* separate them, so that
+   nobody later cites it as evidence.
+2. **`OFFSET` versus `FROMLAP`** (issue #6). The two origins are *equal* in the
+   worked example, because it is a first lap. A decoder that treated them as
+   interchangeable would pass every test derivable from the document and then
+   be wrong from the second lap of every session onwards. Run C settles it.
+3. **Truncate or round** (settled, recorded here for completeness). The
+   document's worked example truncates; the MyFreelap screenshot beside it
+   rounds, which is how one leg reads `00:02.00` in the text and `00:02.01` in
+   the picture. The app rounds, because #25 measures it against MyFreelap.
 
-- Is it absolute (chip uptime) or relative to START? Run E vs G answers this.
-- Width: if it is u32 in ms it wraps at 49.7 days — irrelevant. If u24 or u16 note the wrap and handle it in `decode()`.
-- Does the FINISH packet include all crossings, or does the chip notify per crossing (Run E)? Set `STREAMING` accordingly.
-- Does the app write anything before data flows (look for ATT Write Request in the snoop log right after connect)? Copy it into `getHandshakeWrites()`.
-- Fragmentation: any notification of exactly 20 bytes followed immediately by a shorter one is a fragment pair; find the length field.
+## The question about the watch, not the chip (issue #60)
 
-## Estimating BLE latency (for `fl_est_ms`)
+**This is the one that decides what the app can be**, and it needs no
+understanding of the protocol at all.
 
-With the decoder working: start a phone stopwatch and cross START at the same instant, cross FINISH at a known reading, compare to the watch's `t_arrive` for the FINISH packet minus `rep_time`. Ten trials, take the median, set `bleLatencyMs` in settings. Expect 50–300 ms.
+The intermediate splits are in the *scan response*. Nothing in the Connect IQ
+SDK says whether Connect IQ performs an active scan — which is what elicits a
+scan response — or whether scan-response payload reaches `onScanResults` at
+all. `grep -ri "scan response"` across the BLE documentation returns nothing.
+
+If it does, the app works as designed. If it does not, the app can report a rep
+total and a final split and nothing else, which is a different product. Run a
+minimal scanning app on a **real watch** and record:
+
+* how many entries `getManufacturerSpecificDataIterator()` yields for company
+  `0x0363` — one, or two;
+* the length of `getRawData()`;
+* whether `getDeviceName()` returns anything. The local name is only ever sent
+  in a scan response, so a non-null name is itself evidence of an active scan.
+
+Record simulator behaviour **separately and label it as such**. The simulator's
+BLE stack has already proved not to match a watch once.
+
+## Capturing without a sniffer
+
+`tools/decode_capture.py` reads a capture export and decodes every Freelap
+frame in it at the documented offsets. Given times it also brute-forces every
+offset where each could be encoded — the search this tool was originally built
+for. That is kept deliberately: it is the honest way to investigate a frame
+that does *not* decode. Rather than assuming our offsets are right and the chip
+is odd, it asks where the number actually is. If it ever finds a time at an
+offset the decoder does not use, the decoder is wrong.
+
+`tools/fake_chip.py --print` generates frames with no radio at all, and prints
+the times a correct decoder should get back from them, which is usually a
+faster way to test a change than finding a chip.
 
 ## Watch-side capture mode
 
-Once the service UUID is known, enable *Capture mode* in the app settings. The watch subscribes and logs every notification (hex + `System.getTimer()`) to `Application.Storage` (last 200 packets, rolling) and shows the latest on screen. Useful for confirming the watch sees the same bytes as the phone, and for catching packets the phone app never triggers (e.g. real-time START).
+Capture mode logs what the watch itself saw, which is the only way to tell
+"the chip never advertised" from "the watch was not listening" — a distinction
+that matters a great deal once #9 starts counting missed reps. Log every frame
+including repeats, since the repeat rate is itself evidence, and log frames
+that fail validation as well as those that pass: a frame we rejected and should
+not have is exactly the bug this would catch.
