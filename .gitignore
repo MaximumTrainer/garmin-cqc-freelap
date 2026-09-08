@@ -19,3 +19,9 @@ __pycache__/
 # and not quoted at length in a public issue. Keep the file outside the repo
 # (../freelap-vendor-docs/); this rule is the second line of defence.
 *.pdf
+
+# Test fixtures derived from the confidential Freelap frame document. They are
+# the only external ground truth we have for the decoder, so the tests that use
+# them skip rather than fail when they are absent (see
+# tools/tests/test_freelap_frame.py). Not ours to publish - see #8.
+tools/tests/data/vendor_*.json
