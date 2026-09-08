@@ -13,3 +13,9 @@ __pycache__/
 .vscode/
 .DS_Store
 .copilot-specs-cache/
+
+# Vendor documentation shared with us by Freelap under confidence. It is not
+# ours to redistribute, so it must never be committed - not here, not in docs/,
+# and not quoted at length in a public issue. Keep the file outside the repo
+# (../freelap-vendor-docs/); this rule is the second line of defence.
+*.pdf
