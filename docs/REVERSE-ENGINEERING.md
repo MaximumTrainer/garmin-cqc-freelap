@@ -71,6 +71,12 @@ worked example do not follow a single rule from the bytes beside them.
 
 * An FxChip BLE, and at least one transmitter that can be set to **Finish** —
   without one the chip never enters lap mode and never advertises.
+* Remember the chip has no button. **Shake it vertically to wake it**, and it
+  **switches itself off after 30 minutes** without crossing a transmitter,
+  losing whatever time it held. A chip that appears silent may simply be
+  asleep, which is worth ruling out before recording it as a missed frame.
+* Keep it **at least 30 cm** from whatever is listening; Freelap warn about
+  interference closer than that.
 * A phone running nRF Connect, or `btmon` on Linux, or an nRF52840 dongle with
   the Wireshark sniffer plugin. Any of the three will do: the chip broadcasts,
   so there is no connection to get inside and no pairing to defeat.
@@ -91,10 +97,30 @@ their modes, and anything surprising.
 | A | Start + Finish, one rep | The minimum frame; what the lap array holds with no intermediates |
 | B | Start + 2 intermediates + Finish | Intermediate laps in the scan response, and their order |
 | C | As B, three reps back to back | Whether the counters reset per rep or accumulate — this is what settles `OFFSET` vs `FROMLAP` |
-| D | Chip held in a transmitter's field for 5 s | Discoverable mode, and the chip's local name |
+| D | Chip **shaken** | Discoverable mode, and the chip's local name. The manual says shaking is what triggers it and that it lasts 10 s; the frame specification describes holding it in a transmitter field for 5 s instead. Both may work — find out, because the shake route needs no transmitter and is what #63's on-watch picker should tell people to do |
 | E | A rep, then wait out the window without listening | That the advertising really does stop, and how long the watch has |
 | F | Two chips crossing the same transmitters | That frames separate by chip id — the basis of #63 and #28 |
 | G | Chip taken out of range mid-rep and returned | Whether a missed crossing is recoverable from a later frame, or lost |
+| H | A rep deliberately not listened for, then the chip shaken | **Recovery.** The manual says the latest time stays in memory and shaking re-sends it. If that reaches a watch the same way, a missed window stops being a lost rep (#9) |
+
+## What the public manuals settle
+
+Freelap's FxChip BLE and FxMotion manuals carry no confidentiality marking and
+are worth reading alongside the frame specification. Two things in them are
+independent evidence about the frame rather than mere product detail:
+
+* **"Your FxChip BLE has a memory of maximum 10 intermediate times. This means
+  that your track must contain a maximum of 11 transmitters."** Eleven
+  transmitters is a start, nine intermediate crossings and a finish — and nine
+  is exactly how many timestamps fit in the scan response. Two unrelated
+  sources agreeing on that number is stronger evidence that the field is being
+  read correctly than anything derivable from the specification alone.
+* **"Accuracy: 1/100 of a second."** The internal tick is finer, but the
+  accuracy is not. Do not quote the tick as though it were the resolution.
+
+They also give the limits `Course` now warns about — eleven transmitters, and
+at least 10 m or 0.7 s between two of them — and confirm that transmitters are
+genuinely START, LAP and FINISH, which the LED colours distinguish.
 
 ## The three questions the document could not answer
 

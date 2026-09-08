@@ -12,6 +12,59 @@ A Garmin watch has no receiver for that magnetic field. Its magnetometer is a sl
 
 Consequence for timing: the numbers of record are the chip's. The watch's job is to carry them into the file without re-measuring or re-deriving them, anchor them to wall-clock time as well as it can, and derive pace/speed/velocity from the distances you configure for the course. See §3 for what the chip's resolution actually is — it is not microseconds, whatever the field width suggests.
 
+### 1.1 How the chip behaves
+
+From Freelap's published manuals for the FxChip BLE and the FxMotion, and their
+FAQ. None of this is confidential, and several items contradict what this
+document assumed before they were read.
+
+**It has no button, and it sleeps.** The athlete activates it by holding it
+vertically and shaking it horizontally; the LED flashes green. It then
+**switches itself off after 30 minutes without crossing a transmitter**, and
+switching off *loses the time held in memory*. So a chip that has been sitting
+in a bag between reps is not necessarily awake, and "no frames" does not mean
+"no rep" (#9).
+
+**Discoverable mode is entered by shaking, and lasts 10 seconds.** This is
+better news than the alternative: it needs no transmitter, so the on-watch
+"Choose chip" flow (#63) works anywhere, not just on a set-up track. Freelap
+also warn to keep the chip at least 30 cm from the receiving device, which is
+worth repeating in the UI when we ask someone to shake it.
+
+**It holds exactly one rep, and shaking re-sends it.** "Your latest time is
+stored into your chip's memory... shake your chip... your time is downloaded."
+It survives until the chip sleeps, is charged, or another rep replaces it.
+
+That is a **recovery path for a missed rep**, and it changes what #9 can
+promise. A missed advertising window is not automatically a lost rep after all:
+the most recent one can be asked for again. Only the most recent, and only
+before another replaces it — but "shake your chip" is a far better thing to
+tell an athlete than "that rep is gone".
+
+**Course limits, and they are ours to enforce.** The chip stores *ten
+intermediate times*, so a track holds **at most 11 transmitters**. Freelap also
+ask for **at least 10 m or 0.7 s between two transmitters**. `Course` warns on
+both rather than rejecting: a course that breaks them is not unusable, it is
+quietly incomplete, and an athlete who sets out twelve transmitters would
+otherwise get eleven splits with every number looking right.
+
+The eleven-transmitter figure is a useful independent check on the frame
+layout. Eleven transmitters is a start, nine intermediate crossings and a
+finish — and nine is exactly how many timestamps the scan response holds. Two
+unrelated sources agreeing on that number is better evidence than anything
+derivable from the specification alone.
+
+**Transmitters really are START / LAP / FINISH.** The chip's LED flashes green,
+blue and red for the three. The frame carries no per-crossing code (#13), so
+matching is ordinal — but the physical model behind `TxCode` is real, which is
+why the course spec still describes transmitters that way.
+
+**The FxMotion is a different transponder.** Same id format, same accuracy,
+same 0.7 s rule, same shake-to-activate — but **five** intermediate times, so
+six transmitters, and it also reports reaction time and stride data. Whether it
+uses the same broadcast frame is unknown; the specification we have is for the
+FxChip BLE.
+
 ## 2. System overview
 
 ```
@@ -73,19 +126,21 @@ SDK does not say and the simulator will not settle.
 
 ## 3. Timing model (why "microseconds" needs care)
 
-**The chip's tick is 1/1024 s — just under a millisecond.** That is the resolution of every number in this project, and it is worth stating plainly because the FIT fields are in microseconds and that looks like a much stronger claim than it is. A microsecond field is a container, not a measurement. What the chip resolves is about 0.98 ms, which is still roughly ten times finer than the hundredths MyFreelap displays.
+**Freelap publish the chip's accuracy as 1/100 s.** Both the FxChip BLE and FxMotion manuals state it in the same words — *"Accuracy: 1/100 of a second"* — and that is also what MyFreelap displays. Hundredths is the honest claim, and it is the one to make.
+
+The chip's internal tick is finer: 1/1024 s, which is why the conversion factor is 10.24 rather than a round number. That is how the number is **carried**, not how well it is **measured**, and the difference has caught this document out twice. It first promised whole microseconds; corrected, it then claimed the chip resolves to about a millisecond, "ten times finer than MyFreelap displays". Both overstated it. A finer encoding is not a finer measurement, and the vendor's own figure is the one that counts.
 
 Two things follow, and the second is the one that used to be wrong here:
 
 * **Subtract in ticks, convert once.** The tick is not a decimal fraction of a second, so converting each leg before adding them up accumulates error. `BroadcastFrame.segments()` does the arithmetic in ticks and the conversion happens at the edge.
-* **"Nothing is rounded on the way" was not true.** Converting a tick count to microseconds is exact only when that count is a multiple of 16. The residue is under a microsecond — far below what the chip can measure, and irrelevant in practice — but the old claim overstated it, and this document is where that should be admitted rather than quietly dropped.
+* **"Nothing is rounded on the way" was not true.** Converting a tick count to microseconds is exact only when that count is a multiple of 16. The residue is under a microsecond — two orders of magnitude below the chip's stated accuracy, and irrelevant in practice — but the old claim overstated it, and this document is where that should be admitted rather than quietly dropped.
 
 
 There are three clocks:
 
 | Clock | Resolution | Who owns it | Notes |
 |---|---|---|---|
-| FxChip internal | 1/1024 s (≈0.977 ms), from Freelap's specification | chip | Authoritative for split *durations*. Relative to the chip's own uptime, not wall-clock. |
+| FxChip internal | accuracy 1/100 s (published); carried in ticks of 1/1024 s | chip | Authoritative for split *durations*. Relative to the chip's own uptime, not wall-clock. |
 | Watch `System.getTimer()` | 1 ms, monotonic | watch | Used to timestamp BLE packet arrival. |
 | Watch `Time.now()` / FIT timestamp | 1 s (FIT `timestamp` is uint32 seconds; records also carry `timestamp_ms` internally, but CIQ doesn't expose sub-second control) | watch | What Garmin Connect shows on the timeline. |
 

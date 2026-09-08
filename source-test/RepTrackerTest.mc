@@ -150,9 +150,10 @@ function testAGapInTheLapCounterIsReportedAsAMissedRep(
 
     var rep = tracker.onFrame(TestSupport.repFrame(MINE, 2), []);
 
-    // The window is bounded and there is no reconnect, so a rep the watch did
-    // not hear is gone for good. An athlete who is told can run it again; one
-    // who is not finds a hole in the data that evening.
+    // The chip holds its latest time and re-sends it when shaken, so a rep
+    // reported here is recoverable if it is the most recent one - and simply
+    // gone if it is not. Either way the athlete can only act on it if the
+    // watch says so, which is why this is counted rather than absorbed.
     Test.assertMessage(rep != null, "rep 2 still counts");
     Test.assertEqualMessage(tracker.missedReps, 1, "and one was missed");
     return true;

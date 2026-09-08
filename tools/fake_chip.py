@@ -26,9 +26,10 @@ import sys
 
 import freelap_frame as ff
 
-# The chip's tick is 1/1024 s -- which is why the document's conversion to
-# hundredths is 10.24 rather than a round number. Deriving it here rather than
-# hard-coding 1024 keeps the two definitions from drifting apart.
+# The chip's tick is 1/1024 s -- which is why the conversion to hundredths is
+# 10.24 rather than a round number. Deriving it here rather than hard-coding
+# 1024 keeps the two definitions from drifting apart. Freelap publish the
+# chip's *accuracy* as 1/100 s, which is a different and coarser thing.
 TICKS_PER_SECOND = 100 * ff.TICKS_PER_CENTISECOND
 
 DEFAULT_COURSE = "S:0;L:30;L:60;F:100"
@@ -65,6 +66,32 @@ def parse_course(spec):
     return out
 
 
+def check_against_the_chip(course, speed_mps):
+    """Refuse a course or a speed the real chip could not produce.
+
+    A fake that generates what hardware cannot is worse than no fake: every
+    test built on it passes and none of them mean anything. All three limits
+    below are Freelap's own, published in the FxChip BLE manual and the FAQ.
+    """
+    if len(course) > ff.MAX_TRANSMITTERS:
+        raise ValueError(
+            "%d transmitters; the chip stores ten intermediate times, so a "
+            "track holds at most %d" % (len(course), ff.MAX_TRANSMITTERS))
+
+    for i in range(1, len(course)):
+        gap = course[i][1] - course[i - 1][1]
+        if gap < ff.MIN_GAP_M:
+            raise ValueError(
+                "%.3g m between transmitters %d and %d; the minimum is %g m"
+                % (gap, i - 1, i, ff.MIN_GAP_M))
+        if speed_mps > 0 and gap / speed_mps < ff.MIN_LEG_SECONDS:
+            raise ValueError(
+                "%.3g m at %.3g m/s is %.3gs between transmitters %d and %d; "
+                "the minimum is %gs"
+                % (gap, speed_mps, gap / speed_mps, i - 1, i,
+                   ff.MIN_LEG_SECONDS))
+
+
 def crossing_ticks(course, speed_mps=8.0, jitter=0.0, index=0, epoch=DEFAULT_EPOCH):
     """Absolute chip ticks for each crossing of one rep.
 
@@ -73,6 +100,7 @@ def crossing_ticks(course, speed_mps=8.0, jitter=0.0, index=0, epoch=DEFAULT_EPO
     through otherwise.
     """
     speed = speed_mps + jitter * ((index % 5) - 2) * 0.1
+    check_against_the_chip(course, speed)
     return [epoch + int(round(metres / speed * TICKS_PER_SECOND))
             for _code, metres in course]
 
