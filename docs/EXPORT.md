@@ -7,7 +7,16 @@ There are two copies of every split, and they are independent on purpose.
 | **The FIT file** | the activity, synced to Garmin Connect | full, in the file | a desktop and `fitdecode` |
 | **The on-watch log** | `Application.Storage`, last session only | full | the simulator console |
 
-Garmin Connect **rounds floats in its UI**. It shows `uint32` fields as-is, which is why the microsecond durations are `uint32` and not `float` — but `fl_velocity`, `fl_speed` and `fl_pace` will look rounded there. Read the file if the exact numbers matter.
+Garmin Connect **rounds floats in its UI**. It shows `uint32` fields as-is, which is why the durations are `uint32` and not `float` — but `fl_velocity`, `fl_speed` and `fl_pace` will look rounded there. Read the file if the exact numbers matter.
+
+### What "precision" means here
+
+The durations are carried in **microseconds, which is finer than the chip can measure**. The FxChip counts in ticks of 1/1024 s — just under a millisecond — so a microsecond field is a container, not a claim. What the chip actually resolves is about 0.98 ms, which is still around ten times finer than the hundredths MyFreelap displays.
+
+Two consequences worth knowing before you compare numbers with anything:
+
+* the app subtracts in the chip's own ticks and converts once, because the tick is not a decimal fraction of a second and converting each leg before adding them up accumulates error;
+* converting a tick count to microseconds is exact only when that count is a multiple of 16. The residue is under a microsecond and far below what the chip can measure, but it is not nothing, and "nothing is rounded on the way" — which this document used to say — was not true.
 
 ## From the FIT file
 
@@ -39,8 +48,8 @@ Only the last session is kept, and only up to 300 splits (`SplitLog.MAX_ROWS`) �
 | `rep` | `fl_rep` | 1-based Freelap rep; one Garmin lap each |
 | `tx_index` | `fl_tx_idx` | position on the course, 0 = START. **Blank** when the course could not place the crossing (`255` in the file, `-1` on the watch) |
 | `tx_code` | `fl_tx_code` | 1 START, 2 LAP, 3 FINISH, 0 unknown |
-| `cum_us` | `fl_cum_us` | µs since this rep's START — **exact** |
-| `split_us` | `fl_split_us` | µs since the previous crossing — **exact** |
+| `cum_us` | `fl_cum_us` | µs since this rep's START, converted from the chip's ticks (see above) |
+| `split_us` | `fl_split_us` | µs since the previous crossing, likewise |
 | `cum_dist_m` | `fl_dist_m` | metres from the course definition, not measured |
 | `velocity_mps` | `fl_velocity` | the sprint-coaching number |
 | `speed_kmh` | `fl_speed` | `velocity × 3.6` |

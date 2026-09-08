@@ -23,10 +23,15 @@ order before touching code:
   PR and replace the test with a written manual verification step.
 - **Work outside-in**: start at the acceptance criterion, drive inward. Never
   start by writing a class.
-- `source/ble/FreelapProtocol.mc` is the only file allowed to know Freelap's
-  packet format, and nothing in it changes without a capture in `captures/`.
-- Everything currently marked `HYPOTHESIS` is a hypothesis. Do not silently
-  promote a guess to a fact; delete the marker only when a capture proves it.
+- `source/ble/BroadcastFrame.mc` and `tools/freelap_frame.py` are the only
+  places that know Freelap's frame layout, and they are mirrors of each other -
+  `tools/tests/test_monkeyc_vectors.py` fails if they drift apart.
+- `source/ble/FreelapProtocol.mc` and `PacketAssembler.mc` describe a
+  connection-oriented protocol the chip does not speak. They still build and
+  still pass their tests; they are retired in #61. Do not add to them.
+- The layout comes from a specification Freelap shared in confidence. Implement
+  it; do not reproduce it. The document is not in this repo, `*.pdf` is ignored,
+  and byte tables do not go in public issues (#8).
 - `minApiLevel` stays at `3.1.0`. If an API you want needs more, either avoid it
   or raise it in a dedicated issue.
 
@@ -236,10 +241,16 @@ nothing.
 - No `String.split` at API 3.1 (`Course.splitString` exists for that reason).
 - `decodeNumber(UINT32)` yields a `Long`; subtract the rep start before
   narrowing to `Number`, or chip uptime will overflow.
-- BLE: max 3 registered profiles, one delegate, 20-byte writes, pairing does not
-  survive an app restart, notifications need `0x0001` written to the CCCD.
-- Durations stay integer microseconds end to end. Any rounding before the FIT
-  file is a bug, not a display choice.
+- BLE: the chip broadcasts and never accepts a connection, so none of the
+  connection limits apply. What does apply: Connect IQ has **no scan filter**,
+  so every advertisement from every device in range arrives in `onScanResults`
+  and is rejected in Monkey C. Keep that path cheap and allocation-free.
+- A Monkey C `Number` is signed. The frame's 32-bit counters are `Long`s; a
+  chip that has been running a while decodes negative otherwise.
+- The chip's tick is 1/1024 s - just under a millisecond. Durations are carried
+  in microseconds because that is finer than the chip can measure, **not**
+  because the chip measures microseconds. Subtract in ticks and convert once;
+  converting each leg and adding the results accumulates error.
 - Build with `-l 1` type checking; a new type warning is a failing build.
 
 ## Definition of done

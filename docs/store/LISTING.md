@@ -15,12 +15,14 @@ Records Freelap FxChip BLE crossings into your activity as exact split times.
 
 ## Long description
 
-Freelap Splits connects to a Freelap FxChip BLE and writes every transmitter
+Freelap Splits listens for a Freelap FxChip BLE and writes every transmitter
 crossing into your Garmin activity: split time, cumulative time, distance,
-velocity, speed and pace, with one Garmin lap per Freelap rep.
+velocity, speed and pace, with one Garmin lap per Freelap rep. There is no
+pairing to do — the chip broadcasts, and the watch simply listens for the one
+you tell it is yours.
 
-Times are kept as the chip measured them, in whole microseconds, from the chip
-to the FIT file — nothing is rounded on the way. Set up your course once
+Times are the chip's own, carried into the FIT file without being re-measured
+or re-derived on the way. Set up your course once
 (`S:0;L:30;L:60;F:100`, or dial a distance on the watch) and the app matches
 each crossing to a transmitter and derives the distances for you.
 
@@ -28,7 +30,7 @@ each crossing to a transmitter and derives the distances for you.
 
 - the last split's velocity, large, with its time, distance and pace
 - rep count and last rep time
-- chip connection state at a glance
+- which chip you are bound to, and whether it has been heard
 - a summary of every split in the rep, for five seconds after each finish
 
 **In the activity file**
@@ -42,9 +44,10 @@ each crossing to a transmitter and derives the distances for you.
 
 - up to eight courses, editable in Garmin Connect or picked on the watch
 - a Quick course: start line to finish line, 10–400 m, dialled on the wrist
-- reconnects on its own if the chip drops out of range
-- prefers your own chip when several are advertising
-- a capture mode that logs raw packets, for anyone working on the protocol
+- listens for your chip by the id printed on it, so a training partner's chip
+  in range never lands in your activity
+- tells you when a rep was missed, rather than quietly leaving a hole
+- a capture mode that logs raw frames, for anyone working on the protocol
 
 ## What you need
 
@@ -58,14 +61,14 @@ chip recorded.
 network requests. It talks to your Freelap chip over Bluetooth Low Energy and
 writes to your own activity file, which syncs to Garmin Connect exactly as any
 other activity does. The app stores your course settings and the last session's
-splits on the watch, and the name of the chip you last connected to so it can
-prefer it next time. No analytics, no accounts, no third-party services.
+splits on the watch, and the id of the chip you told it to listen for.
+No analytics, no accounts, no third-party services.
 
 ## Permissions, and why each is needed
 
 | Permission | Why |
 | --- | --- |
-| Bluetooth Low Energy | to connect to the FxChip and receive crossings — the entire point of the app |
+| Bluetooth Low Energy | to listen for the FxChip's broadcasts — the entire point of the app. The app never connects to the chip or to anything else |
 | Fit | to create the activity recording session |
 | FitContributor | to add the split fields to that activity |
 

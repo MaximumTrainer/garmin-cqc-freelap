@@ -6,11 +6,57 @@ The project is **garmin-freelap**. The *app* is called **Freelap** — that is t
 name on the watch launcher (`resources/strings/strings.xml`) and in the Connect IQ
 store listing, and it is deliberately not the repository slug.
 
-Read `docs/DESIGN.md` first. The short version: the watch cannot sense Freelap's magnetic transmitters itself; the chip does, and the watch consumes the chip's BLE output exactly as the MyFreelap phone app does.
+Read `docs/DESIGN.md` first. The short version: the watch cannot sense Freelap's magnetic transmitters itself. The chip does, and the watch listens for the Bluetooth frames the chip broadcasts — exactly as the MyFreelap phone app does. There is no pairing and no connection; the chip announces and anyone in range can listen.
 
 ## Status
 
-Skeleton, and it builds: `monkeyc -l 1` is clean for every `manifest.xml` product whose device definition is installed (19 of 24, API 3.2 through 6.0), the app launches in the simulator, and `monkeydo /t` runs the unit tests. Freelap have provided the broadcast frame specification, and `source/ble/BroadcastFrame.mc` decodes it — the chip broadcasts and never accepts a connection, so there is no pairing and nothing to subscribe to. **It has never been run against a real chip**, and one question decides what this can be: whether a watch can read the part of the broadcast carrying the splits between transmitters (issue #60). `source/ble/FreelapProtocol.mc` and `PacketAssembler.mc` still implement the old connection-oriented guess and are retired in #61. The rest of the pipeline (split engine, FIT fields, UI) is testable today with `tools/fake_chip.py --print`, which needs no radio.
+**Nothing here has been run against a real Freelap chip.** Everything below is
+built and tested against generated frames.
+
+What is done:
+
+- **Freelap supplied the broadcast frame specification** (#8). It is
+  confidential and is not in this repository; it is implemented, not
+  reproduced. It replaced the connection-oriented design this project started
+  with — the chip broadcasts and never accepts a connection.
+- **The decoder exists twice and the two check each other.**
+  `tools/freelap_frame.py` is the reference implementation and reproduces every
+  value in the vendor's worked example; `source/ble/BroadcastFrame.mc` is the
+  watch's, checked against vectors generated from it, with a test that fails if
+  they drift apart.
+- **`RepTracker`** works out which of the frames pouring in are reps, which are
+  repeats, and which belong to somebody else's chip — and counts the reps the
+  watch never heard.
+- **Chip binding**: the id printed on the chip, typed into Garmin Connect
+  (#64).
+- It builds: `monkeyc -l 1` clean for every `manifest.xml` product whose device
+  definition is installed (19 of 24), and `monkeydo /t` runs the Monkey C
+  tests.
+
+## Next steps
+
+Almost everything left needs an FxChip and a transmitter set to **Finish**.
+In rough order of what it would settle:
+
+1. **#60 — can a Garmin watch read the scan response?** The chip puts the
+   splits *between* transmitters there, and nothing in the Connect IQ SDK says
+   whether a watch can see it. If it cannot, this app records a rep total and a
+   final split and nothing finer, which is a different product. About an hour's
+   work, and it gates the rest.
+2. **#4 / #5 / #6 — confirm the documented frame against a real chip**, and
+   settle the two things the specification could not: which mask applies to the
+   running totals, and how `OFFSET` differs from `FROMLAP` on a second lap.
+3. **#61 — delete the connection-oriented layer.** `FreelapProtocol.mc` and
+   `PacketAssembler.mc` still implement the old guess. They wait on #4
+   confirming the chip really does refuse a connection.
+4. **#25 — twenty reps on a track against MyFreelap.** The last gate before
+   this can honestly claim to work.
+5. **#68 — a data field alongside the watch app**, so Freelap splits can be
+   recorded into a structured Garmin workout with the beam timing beside
+   Garmin's GPS timing.
+
+Without hardware, `tools/fake_chip.py --print` generates frames and the times a
+correct decoder should get back from them, with no radio involved.
 
 ## Layout
 
