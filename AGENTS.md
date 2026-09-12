@@ -277,3 +277,16 @@ nothing.
   saying why in the PR.
 - Do not claim hardware verification you did not perform. "Not run — no chip
   available" is an acceptable PR line; a fabricated green is not.
+
+## Shared agent skills
+
+Shared skills live in [MaximumTrainer/agent-skills](https://github.com/MaximumTrainer/agent-skills). Before writing a new
+skill, runbook or repeated procedure, check the catalogue - and send genuinely
+general improvements back so the other repositories get them too.
+
+```bash
+python3 .claude/skills/skill-exchange/scripts/skills.py list
+python3 .claude/skills/skill-exchange/scripts/skills.py status
+```
+
+See `.claude/skills/skill-exchange/` for the workflow.
